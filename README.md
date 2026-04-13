@@ -20,8 +20,9 @@ Adds colored group headers and underline indicators to the Zotero tab bar, lets 
 
 | Zotero | Support |
 |--------|---------|
-| 7.x    | ✅ Supported |
+| 9.x    | ✅ Supported |
 | 8.x    | ✅ Supported |
+| 7.x    | ✅ Supported |
 | < 7    | ❌ Not supported |
 
 macOS, Windows, and Linux are all supported.
