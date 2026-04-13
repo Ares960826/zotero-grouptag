@@ -15,8 +15,8 @@
     "id": "grouptag@zotero.org",
     "namespace": "grouptag",
     "xpiName": "zotero-grouptag",
-    "updateURL": "https://github.com/ares/zotero-grouptag/releases/download/release/update.json",
-    "xpiDownloadLink": "https://github.com/ares/zotero-grouptag/releases/download/v{{version}}/{{xpiName}}.xpi",
+    "updateURL": "https://github.com/Ares960826/zotero-grouptag/releases/download/release/update.json",
+    "xpiDownloadLink": "https://github.com/Ares960826/zotero-grouptag/releases/download/v{{version}}/{{xpiName}}.xpi",
     "source": [
       "src",
       "addon"
@@ -44,12 +44,12 @@
   "license": "AGPL-3.0-or-later",
   "repository": {
     "type": "git",
-    "url": "https://github.com/ares/zotero-grouptag.git"
+    "url": "https://github.com/Ares960826/zotero-grouptag.git"
   },
   "bugs": {
-    "url": "https://github.com/ares/zotero-grouptag/issues"
+    "url": "https://github.com/Ares960826/zotero-grouptag/issues"
   },
-  "homepage": "https://github.com/ares/zotero-grouptag#readme",
+  "homepage": "https://github.com/Ares960826/zotero-grouptag#readme",
   "dependencies": {
     "zotero-plugin-toolkit": "^5.1.0-beta.13"
   },
