@@ -4,7 +4,7 @@ Chrome-style visual tab grouping for the Zotero PDF reader.
 
 Adds colored group headers and underline indicators to the Zotero tab bar, lets you create named groups, and manage tab assignments — all from a right-click context menu.
 
-![Zotero tab bar with GroupTag group headers](docs/screenshot-placeholder.png)
+![Zotero tab bar with GroupTag group headers](docs/screenshot.png)
 
 ## Features
 
