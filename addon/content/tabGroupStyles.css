@@ -1,0 +1,112 @@
+/* Tab Group Headers */
+.grouptag-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 4px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 500;
+  font-size: 0.9em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 150px;
+  user-select: none;
+  cursor: default;
+  transition: max-width 0.2s ease-in-out;
+  /* Zotero 8 native styling */
+  background-color: var(--theme-tab-background);
+  color: var(--theme-text-color);
+  border: 1px solid var(--theme-tab-border);
+}
+
+/* Zotero 8 Density Support */
+:root[density="compact"] .grouptag-header {
+  padding: 1px 6px;
+  font-size: 0.85em;
+  max-height: 20px;
+}
+
+:root[density="touch"] .grouptag-header {
+  padding: 4px 12px;
+  font-size: 1em;
+  max-height: 32px;
+}
+
+.grouptag-header[data-group-color] {
+  color: #fff; /* Default for dark annotation colors */
+  background-color: var(--group-color);
+}
+
+/* Tab Underlines / Indicators */
+.grouptag-tab {
+  position: relative;
+}
+
+.grouptag-tab::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  border-radius: 3px 3px 0 0;
+  z-index: 100;
+  background-color: var(--group-color);
+}
+
+/* Named Color Variables for Zotero 8 Patterns */
+.grouptag-header[data-group-color="blue"],
+.grouptag-tab[data-group-color="blue"] {
+  --group-color: #2ea8e5;
+}
+
+.grouptag-header[data-group-color="green"],
+.grouptag-tab[data-group-color="green"] {
+  --group-color: #5fb236;
+}
+
+.grouptag-header[data-group-color="yellow"],
+.grouptag-tab[data-group-color="yellow"] {
+  --group-color: #ffd400;
+  color: #202124; /* Dark text for yellow */
+}
+
+.grouptag-header[data-group-color="orange"],
+.grouptag-tab[data-group-color="orange"] {
+  --group-color: #f19837;
+}
+
+.grouptag-header[data-group-color="red"],
+.grouptag-tab[data-group-color="red"] {
+  --group-color: #ff6666;
+}
+
+.grouptag-header[data-group-color="purple"],
+.grouptag-tab[data-group-color="purple"] {
+  --group-color: #a28ae5;
+}
+
+.grouptag-header[data-group-color="magenta"],
+.grouptag-tab[data-group-color="magenta"] {
+  --group-color: #e56eee;
+}
+
+.grouptag-header[data-group-color="gray"],
+.grouptag-tab[data-group-color="gray"] {
+  --group-color: #aaaaaa;
+}
+
+/* Inline Style Support (for hex colors) */
+.grouptag-header[style*="--group-color"],
+.grouptag-tab[style*="--group-color"] {
+  /* Inherits from inline style */
+}
+
+/* Adjust header text */
+.grouptag-header-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

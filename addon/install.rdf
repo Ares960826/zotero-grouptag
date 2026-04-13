@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RDF xmlns="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+     xmlns:em="http://www.mozilla.org/2004/em-rdf#">
+
+  <Description about="urn:mozilla:install-manifest">
+    <em:id>grouptag@zotero.org</em:id>
+    <em:name>Zotero GroupTag</em:name>
+    <em:version>1.0.0</em:version>
+    <em:description>Chrome style visual grouping for opened Zotero PDF reader tabs</em:description>
+    <em:creator>zotero-grouptag contributors</em:creator>
+    <em:license>AGPL-3.0-or-later</em:license>
+
+    <em:targetApplication>
+      <Description>
+        <em:id>zotero@chnm.gmu.edu</em:id>
+        <em:minVersion>7.0.0</em:minVersion>
+        <em:maxVersion>8.*</em:maxVersion>
+      </Description>
+    </em:targetApplication>
+  </Description>
+</RDF>

@@ -1,0 +1,9 @@
+{
+  "description": "Chrome style visual grouping for opened Zotero PDF reader tabs.",
+  "applications": {
+    "zotero": {
+      "strict_min_version": "7.0.0",
+      "strict_max_version": "8.*"
+    }
+  }
+}

@@ -1,0 +1,13 @@
+.vscode
+build
+dist
+logs
+node_modules
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+.scaffold
+.omc
+.serena
+.sisyphus
+typings/i10n.d.ts

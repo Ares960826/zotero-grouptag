@@ -1,0 +1,44 @@
+# dot files
+.DS_Store
+Thumbs.db
+
+# Node.js
+node_modules/
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+
+# TSC
+tsconfig.tsbuildinfo
+
+# Build output
+build/
+dist/
+logs/
+*.xpi
+
+# Scaffold and local agent state
+.env
+.env.local
+.scaffold/
+.serena/
+.sisyphus/
+
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+*.log
+npm-debug.log*
+
+# Test coverage
+coverage/
+
+# Temporary files
+tmp/
+temp/
+.omc/
