@@ -50,10 +50,21 @@ export interface ZoteroTabAdapter {
   subscribe(listener: ZoteroTabChangeListener): () => void;
 }
 
+export interface ZoteroItemMeta {
+  readonly libraryId?: number;
+  readonly key?: string;
+}
+
 export interface ZoteroTabAdapterRuntime {
   getTabs(): readonly ZoteroTabRecord[];
   getReaders(): readonly ZoteroReaderRecord[];
   subscribe?(listener: () => void): () => void;
+  /**
+   * Resolves an itemID to its library/key metadata. Used as a fallback when
+   * tab.data only carries itemID (the common case for reader-unloaded tabs
+   * after session restore).
+   */
+  getItemMeta?(itemId: number): ZoteroItemMeta | undefined;
 }
 
 export function createZoteroTabAdapter(
@@ -61,28 +72,28 @@ export function createZoteroTabAdapter(
 ): ZoteroTabAdapter {
   const getOpenReaderTabs = (): OpenReaderTabSnapshot[] => {
     const readersByTabId = new Map(
-      runtime
-        .getReaders()
-        .filter((reader) => getReaderType(reader) === "pdf")
-        .map((reader) => [reader.tabID, reader]),
+      runtime.getReaders().map((reader) => [reader.tabID, reader] as const),
     );
 
     return runtime
       .getTabs()
-      .filter((tab) => tab.type === "reader")
+      .filter((tab) => isReaderTabType(tab.type))
       .flatMap((tab) => {
         const reader = readersByTabId.get(tab.id);
-        if (!reader) {
+        // Drop tabs whose reader instance is present and explicitly non-pdf.
+        // Tabs without a reader instance (type "reader-unloaded" before the
+        // user activates them) are kept and assumed to be PDFs.
+        if (reader && getReaderType(reader) !== "pdf") {
           return [];
         }
 
         return [
           {
             tabId: tab.id,
-            title: tab.title || reader._title || tab.id,
+            title: tab.title || reader?._title || tab.id,
             selected: Boolean(tab.selected),
-            readerType: getReaderType(reader),
-            identity: buildIdentity(tab, reader),
+            readerType: reader ? getReaderType(reader) : "pdf",
+            identity: buildIdentity(tab, reader, runtime.getItemMeta),
           },
         ];
       });
@@ -103,25 +114,47 @@ export function createZoteroTabAdapter(
   };
 }
 
+function isReaderTabType(type: string): boolean {
+  // Zotero uses "reader" for an active PDF reader tab and "reader-unloaded"
+  // for tabs whose reader has not been instantiated yet (the common case
+  // after a restart for tabs the user has not clicked). Future variants
+  // starting with "reader" should also be considered.
+  return type === "reader" || type.startsWith("reader-");
+}
+
 function buildIdentity(
   tab: ZoteroTabRecord,
-  reader: ZoteroReaderRecord,
+  reader: ZoteroReaderRecord | undefined,
+  getItemMeta: ((itemId: number) => ZoteroItemMeta | undefined) | undefined,
 ): OpenReaderTabIdentity {
   const itemId =
     firstNumber(
-      reader.itemID,
-      reader.itemId,
+      reader?.itemID,
+      reader?.itemId,
       tab.data?.itemID,
       tab.data?.itemId,
     ) ?? undefined;
-  const libraryId =
+
+  // Prefer library/key sourced directly from the reader or tab.data; only
+  // fall back to a Zotero.Items lookup for itemID when the cheap sources
+  // are missing (e.g. reader-unloaded tabs whose tab.data only contains
+  // itemID).
+  let libraryId =
     firstNumber(
-      reader._item?.libraryID,
-      reader._item?.libraryId,
+      reader?._item?.libraryID,
+      reader?._item?.libraryId,
       tab.data?.libraryID,
       tab.data?.libraryId,
     ) ?? undefined;
-  const key = firstString(reader._item?.key, tab.data?.key);
+  let key = firstString(reader?._item?.key, tab.data?.key);
+
+  if ((libraryId === undefined || !key) && itemId !== undefined && getItemMeta) {
+    const meta = safeGetItemMeta(getItemMeta, itemId);
+    if (meta) {
+      if (libraryId === undefined) libraryId = meta.libraryId;
+      if (!key) key = meta.key;
+    }
+  }
 
   return {
     tabId: tab.id,
@@ -161,6 +194,17 @@ function firstString(...values: Array<string | undefined>): string | undefined {
   return values.find((value) => typeof value === "string" && value.length > 0);
 }
 
+function safeGetItemMeta(
+  getItemMeta: (itemId: number) => ZoteroItemMeta | undefined,
+  itemId: number,
+): ZoteroItemMeta | undefined {
+  try {
+    return getItemMeta(itemId);
+  } catch (_e) {
+    return undefined;
+  }
+}
+
 function createDefaultRuntime(): ZoteroTabAdapterRuntime {
   return {
     getTabs(): readonly ZoteroTabRecord[] {
@@ -174,6 +218,24 @@ function createDefaultRuntime(): ZoteroTabAdapterRuntime {
       return toValuesArray(globalObjects.Zotero?.Reader?._readers).filter(
         isZoteroReaderRecord,
       );
+    },
+    getItemMeta(itemId: number): ZoteroItemMeta | undefined {
+      const items = getGlobalObjects().Zotero?.Items;
+      if (!items?.get) return undefined;
+      try {
+        const item = items.get(itemId);
+        if (!item) return undefined;
+        const libraryId =
+          typeof item.libraryID === "number"
+            ? item.libraryID
+            : typeof item.libraryId === "number"
+              ? item.libraryId
+              : undefined;
+        const key = typeof item.key === "string" ? item.key : undefined;
+        return { libraryId, key };
+      } catch (_e) {
+        return undefined;
+      }
     },
     subscribe(listener: () => void): () => void {
       const notifier = getGlobalObjects().Zotero?.Notifier;
@@ -257,6 +319,13 @@ interface GlobalObjects {
     };
     readonly Reader?: {
       readonly _readers?: unknown;
+    };
+    readonly Items?: {
+      get(id: number): {
+        readonly libraryID?: number;
+        readonly libraryId?: number;
+        readonly key?: string;
+      } | null | undefined;
     };
   };
   readonly Zotero_Tabs?: {

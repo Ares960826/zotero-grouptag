@@ -91,8 +91,9 @@ export class TabGroupUI {
     this.registerNativeMenus();
     this.setupMutationObserver();
 
-    // Initial render
-    this.requestRender(this._adapter.getOpenReaderTabs());
+    // Initial render. Notifier "tab" events will drive subsequent renders
+    // as Zotero restores session tabs and the user interacts with them.
+    this.requestRender();
   }
 
   /**
@@ -123,13 +124,16 @@ export class TabGroupUI {
     this.requestRender(this._adapter.getOpenReaderTabs());
   }
 
-  private requestRender(tabs?: readonly OpenReaderTabSnapshot[]): void {
+  private requestRender(_tabs?: readonly OpenReaderTabSnapshot[]): void {
     if (this._isRendering) {
       this._needsRender = true;
       return;
     }
 
     if (this._renderScheduled) {
+      // A render is already queued; mark that another pass is needed so
+      // the queued render uses the latest state on the next tick.
+      this._needsRender = true;
       return;
     }
 
@@ -140,7 +144,9 @@ export class TabGroupUI {
     const win = this._document.defaultView as any;
     (win?.setTimeout ?? setTimeout)(() => {
       this._renderScheduled = false;
-      this.render(tabs ?? this._adapter.getOpenReaderTabs());
+      // Always read fresh tabs at render time. The previously-passed
+      // snapshot may have been captured before session restore completed.
+      this.render(this._adapter.getOpenReaderTabs());
     }, 0);
   }
 
@@ -223,7 +229,19 @@ export class TabGroupUI {
 
   private setupMutationObserver(): void {
     const tabContainer = this._document.querySelector(".tabs-wrapper .tabs");
-    if (!tabContainer) return;
+    if (!tabContainer) {
+      // Tab container is created asynchronously during main-window load.
+      // Retry shortly so observer attaches once the strip exists.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const win = this._document.defaultView as any;
+      const setTimeoutFn = win?.setTimeout ?? setTimeout;
+      setTimeoutFn(() => {
+        if (!this._observer && this._unsubscribe) {
+          this.setupMutationObserver();
+        }
+      }, 250);
+      return;
+    }
 
     // MutationObserver is a window global, not available in the bootstrap
     // sandbox's globalThis. Access it from the document's owning window.
@@ -233,10 +251,11 @@ export class TabGroupUI {
     if (!MObserver) return;
 
     this._observer = new MObserver(() => {
-      // When tabs are moved or reordered in the DOM, we need to ensure headers stay attached to the first tabs.
-      this.requestRender(this._adapter.getOpenReaderTabs());
+      this.requestRender();
     });
 
+    // Watch tab additions/reorder. The Notifier "tab" event handles
+    // selection changes and reader load events.
     this._observer.observe(tabContainer, {
       childList: true,
       subtree: false,
@@ -663,3 +682,4 @@ function getZoteroGlobal(): ZoteroGlobal {
 function getGlobalDocument(): Document {
   return getZoteroGlobal().getMainWindow().document;
 }
+
