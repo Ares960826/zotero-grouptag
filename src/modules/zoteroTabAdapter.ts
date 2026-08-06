@@ -47,6 +47,8 @@ export type ZoteroTabChangeListener = (
 
 export interface ZoteroTabAdapter {
   getOpenReaderTabs(): OpenReaderTabSnapshot[];
+  getTabOrder?(): string[];
+  reorderTabs?(tabIds: readonly string[]): void;
   subscribe(listener: ZoteroTabChangeListener): () => void;
 }
 
@@ -58,6 +60,7 @@ export interface ZoteroItemMeta {
 export interface ZoteroTabAdapterRuntime {
   getTabs(): readonly ZoteroTabRecord[];
   getReaders(): readonly ZoteroReaderRecord[];
+  reorderTabs?(tabIds: readonly string[]): void;
   subscribe?(listener: () => void): () => void;
   /**
    * Resolves an itemID to its library/key metadata. Used as a fallback when
@@ -101,6 +104,12 @@ export function createZoteroTabAdapter(
 
   return {
     getOpenReaderTabs,
+    getTabOrder(): string[] {
+      return runtime.getTabs().map((tab) => tab.id);
+    },
+    reorderTabs(tabIds: readonly string[]): void {
+      runtime.reorderTabs?.(tabIds);
+    },
     subscribe(listener: ZoteroTabChangeListener): () => void {
       const runtimeSubscribe = runtime.subscribe;
       if (!runtimeSubscribe) {
@@ -148,7 +157,11 @@ function buildIdentity(
     ) ?? undefined;
   let key = firstString(reader?._item?.key, tab.data?.key);
 
-  if ((libraryId === undefined || !key) && itemId !== undefined && getItemMeta) {
+  if (
+    (libraryId === undefined || !key) &&
+    itemId !== undefined &&
+    getItemMeta
+  ) {
     const meta = safeGetItemMeta(getItemMeta, itemId);
     if (meta) {
       if (libraryId === undefined) libraryId = meta.libraryId;
@@ -200,7 +213,7 @@ function safeGetItemMeta(
 ): ZoteroItemMeta | undefined {
   try {
     return getItemMeta(itemId);
-  } catch (_e) {
+  } catch {
     return undefined;
   }
 }
@@ -219,6 +232,27 @@ function createDefaultRuntime(): ZoteroTabAdapterRuntime {
         isZoteroReaderRecord,
       );
     },
+    reorderTabs(tabIds: readonly string[]): void {
+      const tabsManager = getGlobalObjects().Zotero_Tabs;
+      if (!tabsManager?.move) return;
+
+      const currentTabIds = toValuesArray(tabsManager._tabs)
+        .filter(isZoteroTabRecord)
+        .map((tab) => tab.id);
+      if (!hasSameTabIds(currentTabIds, tabIds)) return;
+
+      for (let index = 1; index < tabIds.length; index++) {
+        const tabId = tabIds[index];
+        if (currentTabIds[index] === tabId) continue;
+
+        const currentIndex = currentTabIds.indexOf(tabId);
+        if (currentIndex <= index) return;
+
+        tabsManager.move(tabId, index);
+        currentTabIds.splice(currentIndex, 1);
+        currentTabIds.splice(index, 0, tabId);
+      }
+    },
     getItemMeta(itemId: number): ZoteroItemMeta | undefined {
       const items = getGlobalObjects().Zotero?.Items;
       if (!items?.get) return undefined;
@@ -233,7 +267,7 @@ function createDefaultRuntime(): ZoteroTabAdapterRuntime {
               : undefined;
         const key = typeof item.key === "string" ? item.key : undefined;
         return { libraryId, key };
-      } catch (_e) {
+      } catch {
         return undefined;
       }
     },
@@ -276,6 +310,17 @@ function toValuesArray(value: unknown): unknown[] {
   }
 
   return [];
+}
+
+function hasSameTabIds(
+  currentTabIds: readonly string[],
+  requestedTabIds: readonly string[],
+): boolean {
+  return (
+    currentTabIds.length === requestedTabIds.length &&
+    new Set(currentTabIds).size === currentTabIds.length &&
+    requestedTabIds.every((tabId) => currentTabIds.includes(tabId))
+  );
 }
 
 function isZoteroReaderRecord(value: unknown): value is ZoteroReaderRecord {
@@ -321,14 +366,18 @@ interface GlobalObjects {
       readonly _readers?: unknown;
     };
     readonly Items?: {
-      get(id: number): {
-        readonly libraryID?: number;
-        readonly libraryId?: number;
-        readonly key?: string;
-      } | null | undefined;
+      get(id: number):
+        | {
+            readonly libraryID?: number;
+            readonly libraryId?: number;
+            readonly key?: string;
+          }
+        | null
+        | undefined;
     };
   };
   readonly Zotero_Tabs?: {
     readonly _tabs?: unknown;
+    move?(tabId: string, newIndex: number): void;
   };
 }

@@ -108,7 +108,9 @@ class GroupTagPluginRuntime implements PluginRuntime {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const svc = (globalThis as any).Services;
       if (!wUtils || !svc?.io) {
-        dump("[GroupTag] injectStylesheet: windowUtils or Services unavailable\n");
+        dump(
+          "[GroupTag] injectStylesheet: windowUtils or Services unavailable\n",
+        );
         return;
       }
 
@@ -133,7 +135,7 @@ class GroupTagPluginRuntime implements PluginRuntime {
 
       const uri = svc.io.newURI(STYLESHEET_URI);
       wUtils.removeSheet(uri, wUtils.AUTHOR_SHEET);
-    } catch (_e) {
+    } catch {
       // Ignore — sheet may not be loaded
     }
   }

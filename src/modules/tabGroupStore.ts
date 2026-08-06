@@ -30,6 +30,7 @@ interface PersistedTabGroup {
   readonly id: string;
   readonly name: string;
   readonly color: string;
+  readonly collapsed?: boolean;
   readonly tabIds: readonly string[];
 }
 
@@ -122,9 +123,17 @@ function parsePersistedGroups(value: unknown): TabGroup[] | undefined {
     const id = parseIdentifier(entry.id);
     const name = parseGroupName(entry.name);
     const color = parseColor(entry.color);
+    const collapsed = parseCollapsed(entry.collapsed);
     const tabIds = parseTabIds(entry.tabIds, assignedTabIds);
 
-    if (!id || !name || !color || !tabIds || groupIds.has(id)) {
+    if (
+      !id ||
+      !name ||
+      !color ||
+      collapsed === undefined ||
+      !tabIds ||
+      groupIds.has(id)
+    ) {
       return undefined;
     }
 
@@ -133,6 +142,7 @@ function parsePersistedGroups(value: unknown): TabGroup[] | undefined {
       id,
       name,
       color,
+      collapsed,
       tabIds,
     });
   }
@@ -183,6 +193,14 @@ function parseTabIds(
 
 function parseColor(value: unknown): TabGroup["color"] | undefined {
   return isTabGroupColor(value) ? value : undefined;
+}
+
+function parseCollapsed(value: unknown): boolean | undefined {
+  if (value === undefined) {
+    return false;
+  }
+
+  return typeof value === "boolean" ? value : undefined;
 }
 
 function parseGroupName(value: unknown): string | undefined {

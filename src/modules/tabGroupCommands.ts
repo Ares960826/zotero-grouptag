@@ -71,6 +71,19 @@ export class TabGroupCommandHandler {
     }
   }
 
+  toggleGroupCollapsed(groupId: string): TabGroup | undefined {
+    const group = this.model.getGroup(groupId);
+    if (!group) {
+      return undefined;
+    }
+
+    const updated = this.model.setGroupCollapsed(groupId, !group.collapsed);
+    if (updated) {
+      this.emitChange();
+    }
+    return updated;
+  }
+
   assignTab(groupId: string, tabId: string): boolean {
     const success = this.model.assignTab(groupId, tabId);
     if (success) {

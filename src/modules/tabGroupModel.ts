@@ -20,6 +20,7 @@ export interface TabGroup {
   readonly id: TabGroupId;
   name: TabGroupName;
   color: TabGroupColor;
+  collapsed: boolean;
   tabIds: TabId[];
 }
 
@@ -71,6 +72,7 @@ export class TabGroupModel {
         id: groupId,
         name: normalizeGroupName(group.name),
         color: normalizeGroupColor(group.color),
+        collapsed: group.collapsed === true,
         tabIds: [],
       };
 
@@ -104,6 +106,7 @@ export class TabGroupModel {
       id: crypto.randomUUID(),
       name: normalizeGroupName(name),
       color: normalizeGroupColor(color),
+      collapsed: false,
       tabIds: [],
     };
 
@@ -130,6 +133,20 @@ export class TabGroupModel {
     }
 
     group.color = normalizeGroupColor(color);
+
+    return this.cloneGroup(group);
+  }
+
+  setGroupCollapsed(
+    groupId: TabGroupId,
+    collapsed: boolean,
+  ): TabGroup | undefined {
+    const group = this._groups.get(groupId);
+    if (!group) {
+      return undefined;
+    }
+
+    group.collapsed = collapsed;
 
     return this.cloneGroup(group);
   }
