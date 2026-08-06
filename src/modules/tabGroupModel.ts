@@ -1,4 +1,40 @@
 export const TAB_GROUP_COLORS = [
+  "#184D97",
+  "#1888BF",
+  "#34B8C5",
+  "#A7D9C7",
+  "#F6D081",
+  "#F6E9D3",
+  "#BEC7E1",
+  "#457635",
+  "#6B9136",
+  "#97B365",
+  "#DED352",
+  "#F8EBBD",
+  "#B1C5C9",
+  "#DFC5BF",
+  "#3B328C",
+  "#4E3282",
+  "#8E6CBB",
+  "#B69CD2",
+  "#A2CDF3",
+  "#F8C7CE",
+  "#FAE6D6",
+  "#2B4D31",
+  "#477724",
+  "#83A152",
+  "#F1B00E",
+  "#F3E864",
+  "#58B0DF",
+  "#A9D7E6",
+  "#5271AE",
+  "#70ACDE",
+  "#F5CC7D",
+  "#FFA660",
+  "#D85B59",
+] as const;
+
+const LEGACY_TAB_GROUP_COLORS = [
   "blue",
   "green",
   "yellow",
@@ -8,12 +44,14 @@ export const TAB_GROUP_COLORS = [
   "gray",
 ] as const;
 
-export const DEFAULT_TAB_GROUP_COLOR = "blue" as const;
+export const DEFAULT_TAB_GROUP_COLOR = "#58B0DF" as const;
 
 export type TabGroupId = string;
 export type TabGroupName = string;
 export type TabId = string;
-export type TabGroupColor = (typeof TAB_GROUP_COLORS)[number];
+export type TabGroupColor =
+  | (typeof TAB_GROUP_COLORS)[number]
+  | (typeof LEGACY_TAB_GROUP_COLORS)[number];
 export type ActiveTabGroupId = TabGroupId | undefined;
 
 export interface TabGroup {
@@ -240,8 +278,31 @@ function normalizeGroupColor(color: string): TabGroupColor {
   throw new Error(`Unsupported group color: ${color}`);
 }
 
-function isTabGroupColor(color: string): color is TabGroupColor {
-  return TAB_GROUP_COLORS.includes(color as TabGroupColor);
+export function isTabGroupColor(color: unknown): color is TabGroupColor {
+  return (
+    typeof color === "string" &&
+    ([...TAB_GROUP_COLORS, ...LEGACY_TAB_GROUP_COLORS] as readonly string[])
+      .includes(color)
+  );
+}
+
+export function resolveTabGroupColor(color: TabGroupColor): string {
+  const legacyColors: Record<
+    (typeof LEGACY_TAB_GROUP_COLORS)[number],
+    (typeof TAB_GROUP_COLORS)[number]
+  > = {
+    blue: "#58B0DF",
+    green: "#477724",
+    yellow: "#F3E864",
+    orange: "#FFA660",
+    red: "#D85B59",
+    purple: "#8E6CBB",
+    gray: "#B1C5C9",
+  };
+
+  return color in legacyColors
+    ? legacyColors[color as keyof typeof legacyColors]
+    : color;
 }
 
 function normalizeIdentifier(value: string, label: string): string {

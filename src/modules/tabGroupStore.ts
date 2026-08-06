@@ -3,18 +3,9 @@ import type {
   TabGroup,
   TabGroupModelSnapshot,
 } from "./tabGroupModel.ts";
+import { isTabGroupColor } from "./tabGroupModel.ts";
 
 import { logZoteroError, toContextualError } from "./zoteroLogging.ts";
-
-const SUPPORTED_TAB_GROUP_COLORS = [
-  "blue",
-  "green",
-  "yellow",
-  "orange",
-  "red",
-  "purple",
-  "gray",
-] as const;
 
 export const TAB_GROUP_STORE_VERSION = 1 as const;
 
@@ -220,11 +211,4 @@ function parseIdentifier(value: unknown): string | undefined {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
-}
-
-function isTabGroupColor(value: unknown): value is TabGroup["color"] {
-  return (
-    typeof value === "string" &&
-    SUPPORTED_TAB_GROUP_COLORS.includes(value as never)
-  );
 }

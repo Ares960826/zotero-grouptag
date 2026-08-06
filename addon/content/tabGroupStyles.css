@@ -2,7 +2,9 @@
    .tabs child list preserves Zotero's native drag-index calculations. */
 .grouptag-group-start {
   --grouptag-header-width: 120px;
-  max-width: 340px !important;
+  flex: 0 0 300px !important;
+  min-width: 300px !important;
+  max-width: 360px !important;
 }
 
 .grouptag-header {
@@ -19,7 +21,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   user-select: none;
-  cursor: pointer;
+  cursor: default;
   /* Zotero 8 native styling */
   background-color: var(--theme-tab-background);
   color: var(--theme-text-color);
@@ -40,7 +42,7 @@
 }
 
 .grouptag-header[data-group-color] {
-  color: #fff; /* Default for dark annotation colors */
+  color: var(--group-text-color, #fff);
   background-color: var(--group-color);
 }
 
@@ -62,6 +64,12 @@
   flex-basis: 100%;
   width: 100%;
   margin-inline-end: 0;
+  cursor: grab;
+}
+
+.grouptag-group-start[data-group-collapsed="true"]
+  .grouptag-header:active {
+  cursor: grabbing;
 }
 
 .grouptag-group-start[data-group-collapsed="true"]::after {
@@ -122,4 +130,37 @@
 /* Inline Style Support (for hex colors) */
 .grouptag-tab[style*="--group-color"] {
   /* Inherits from inline style */
+}
+
+.grouptag-color-palette {
+  padding: 8px;
+}
+
+.grouptag-color-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 28px);
+  gap: 6px;
+  padding: 2px;
+}
+
+.grouptag-color-swatch {
+  box-sizing: border-box;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 7px;
+  background: var(--swatch-color);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+  cursor: pointer;
+}
+
+.grouptag-color-swatch:hover,
+.grouptag-color-swatch:focus-visible {
+  border-color: var(--theme-focus-outline-color, #0060df);
+  outline: none;
+}
+
+.grouptag-color-swatch[aria-selected="true"] {
+  border-color: var(--theme-text-color, #202124);
 }

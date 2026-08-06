@@ -11,13 +11,14 @@ assignments from a right-click context menu.
 ## Features
 
 - **Colored group headers** styled like Chrome tab groups
+- **Visual color palette** with 33 curated colors—no color codes to type
 - **Per-tab underline indicators** matching the group color
 - **Collapsible groups** that hide grouped tabs without closing their PDFs
 - **Contiguous groups** that stay together while preserving manual ordering inside each group
 - **Create groups** from any PDF tab via right-click → "Assign to New Group"
 - **Rename, recolor, collapse, expand, and delete groups** via the group header
 - **Assign tabs** to existing groups via right-click on any PDF tab
-- **Remove from group** — tab leaves the group; if it was the last tab, the group is deleted automatically
+- **Empty-group choice** — when the last tab is removed, choose whether to delete or keep the group
 - **Persistent across sessions** — group assignments are saved in Zotero preferences
 
 ## Compatibility
@@ -47,6 +48,7 @@ macOS, Windows, and Linux are all supported.
 2. Right-click any PDF tab
 3. Click **Assign to New Group**
 4. Enter a group name and press OK
+5. Choose a color from the visual palette
 
 A colored header appears inside the first tab of the group. Grouped tabs are
 kept together automatically, and you can drag tabs to reorder them within the
@@ -58,6 +60,14 @@ Click the colored group header, or right-click it and choose **Collapse Group**
 or **Expand Group**. Collapsing only hides the group's tab buttons; the PDFs
 remain open in Zotero.
 
+### Move a group
+
+An expanded group cannot be dragged as one unit. This keeps individual PDF
+tabs readable and avoids interfering with Zotero's native tab ordering.
+
+To move the whole group, collapse it first, then drag the collapsed colored
+group header to the desired position. Expand it again after moving if needed.
+
 ### Assign more tabs to a group
 
 Right-click any PDF tab → **Assign to: [Group Name]**
@@ -66,13 +76,14 @@ Right-click any PDF tab → **Assign to: [Group Name]**
 
 Right-click the tab → **Remove from Group**
 
-If the group becomes empty it is deleted automatically.
+When removing the last tab, Zotero GroupTag asks whether to delete the group or
+keep the empty group for later reuse.
 
 ### Rename, recolor, collapse, or delete a group
 
 Right-click the group header bar and choose the required action.
 
-Colors can be any CSS color name (`blue`, `red`, `salmon`) or hex value (`#4e9af1`).
+Choose **Change Color** to select another color from the visual palette.
 
 ## License
 

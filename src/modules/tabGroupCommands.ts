@@ -92,12 +92,15 @@ export class TabGroupCommandHandler {
     return success;
   }
 
-  unassignTab(groupId: string, tabId: string): boolean {
+  unassignTab(
+    groupId: string,
+    tabId: string,
+    deleteEmptyGroup = false,
+  ): boolean {
     const success = this.model.unassignTab(groupId, tabId);
     if (success) {
-      // Auto-delete the group if it has no tabs left
       const group = this.model.groups.find((g) => g.id === groupId);
-      if (group && group.tabIds.length === 0) {
+      if (deleteEmptyGroup && group?.tabIds.length === 0) {
         this.model.deleteGroup(groupId);
       }
       this.emitChange();
