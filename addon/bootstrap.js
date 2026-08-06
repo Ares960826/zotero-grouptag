@@ -6,18 +6,11 @@
  * https://www.zotero.org/support/dev/zotero_7_for_developers
  */
 
-// Top-level: if this line runs, the file was parsed successfully
-var _grouptag_loaded = Date.now();
-try { console.error("[GroupTag] bootstrap.js parsed at", _grouptag_loaded); } catch(e) {}
-
 var chromeHandle;
 
-function install(data, reason) {
-  try { console.error("[GroupTag] install() called"); } catch(e) {}
-}
+function install(data, reason) {}
 
 async function startup({ id, version, resourceURI, rootURI }, reason) {
-  try { console.error("[GroupTag] startup() called, rootURI=" + rootURI); } catch(e) {}
   var aomStartup = Components.classes[
     "@mozilla.org/addons/addon-manager-startup;1"
   ].getService(Components.interfaces.amIAddonManagerStartup);
@@ -37,7 +30,9 @@ async function startup({ id, version, resourceURI, rootURI }, reason) {
   }
 
   if (!Zotero.__addonInstance__) {
-    dump("[GroupTag] ERROR: Zotero.__addonInstance__ not set after loadSubScript\n");
+    dump(
+      "[GroupTag] ERROR: Zotero.__addonInstance__ not set after loadSubScript\n",
+    );
     Zotero.logError(new Error("[GroupTag] Plugin hooks not registered"));
     return;
   }
