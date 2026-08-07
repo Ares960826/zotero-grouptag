@@ -17,9 +17,7 @@ const GROUPTAG_TAB_MENU_ID = "grouptag-tab-actions";
 const AUTOMATIC_TAB_GROUP_COLORS: readonly (typeof TAB_GROUP_COLORS)[number][] =
   [
     DEFAULT_TAB_GROUP_COLOR,
-    ...TAB_GROUP_COLORS.filter(
-      (color) => color !== DEFAULT_TAB_GROUP_COLOR,
-    ),
+    ...TAB_GROUP_COLORS.filter((color) => color !== DEFAULT_TAB_GROUP_COLOR),
   ];
 
 interface NativeTabMenuContext {
@@ -93,8 +91,10 @@ export class TabGroupUI {
     | undefined;
   private _tabContainer: Element | undefined;
   private _dragInProgress = false;
-  private _draggedGroupMemberTabIds: string[] | undefined;
-  private _draggedGroupAnchorTabId: string | undefined;
+  private _collapsedGroupDrag:
+    | { groupId: string; memberTabIds: string[]; header: HTMLElement }
+    | undefined;
+  private _dropIndicator: Element | undefined;
   private _suppressNextHeaderClick = false;
   private _registeredMenuID: string | undefined;
   private _isRendering = false;
@@ -353,6 +353,12 @@ export class TabGroupUI {
     this._tabContainer = tabContainer;
     tabContainer.addEventListener("dragstart", this.handleTabDragStart);
     tabContainer.addEventListener("dragend", this.handleTabDragEnd);
+    tabContainer.addEventListener(
+      "dragover",
+      this.handleCollapsedGroupDragOver,
+      true,
+    );
+    tabContainer.addEventListener("drop", this.handleCollapsedGroupDrop, true);
   }
 
   private detachDragListeners(): void {
@@ -361,50 +367,28 @@ export class TabGroupUI {
       this.handleTabDragStart,
     );
     this._tabContainer?.removeEventListener("dragend", this.handleTabDragEnd);
+    this._tabContainer?.removeEventListener(
+      "dragover",
+      this.handleCollapsedGroupDragOver,
+      true,
+    );
+    this._tabContainer?.removeEventListener(
+      "drop",
+      this.handleCollapsedGroupDrop,
+      true,
+    );
+    this.clearDropIndicator();
     this._tabContainer = undefined;
     this._dragInProgress = false;
-    this._draggedGroupMemberTabIds = undefined;
-    this._draggedGroupAnchorTabId = undefined;
+    this._collapsedGroupDrag = undefined;
   }
 
-  private readonly handleTabDragStart = (event: Event): void => {
+  private readonly handleTabDragStart = (): void => {
     this._dragInProgress = true;
-    this._draggedGroupMemberTabIds = undefined;
-    this._draggedGroupAnchorTabId = undefined;
-
-    const tab = this.findContainingTab(event.target);
-    if (
-      !tab ||
-      tab.getAttribute("data-group-collapsed") !== "true" ||
-      !tab.classList.contains("grouptag-group-start")
-    ) {
-      return;
-    }
-
-    const groupId = tab.getAttribute("data-group-id");
-    const anchorTabId = tab.getAttribute("data-id");
-    const group = groupId ? this._model.getGroup(groupId) : undefined;
-    if (!group || !anchorTabId) return;
-
-    const stableIds = new Set(group.tabIds);
-    const memberTabIds = this._adapter
-      .getOpenReaderTabs()
-      .filter((snapshot) => stableIds.has(snapshot.identity.stableId))
-      .map((snapshot) => snapshot.tabId);
-    const currentOrder = this._adapter.getTabOrder?.() ?? memberTabIds;
-
-    this._draggedGroupMemberTabIds = currentOrder.filter((tabId) =>
-      memberTabIds.includes(tabId),
-    );
-    this._draggedGroupAnchorTabId = anchorTabId;
-    this._suppressNextHeaderClick = true;
   };
 
   private readonly handleTabDragEnd = (): void => {
-    this.normalizeDraggedCollapsedGroup();
     this._dragInProgress = false;
-    this._draggedGroupMemberTabIds = undefined;
-    this._draggedGroupAnchorTabId = undefined;
     this._needsRender = false;
     this.requestRender();
 
@@ -425,34 +409,190 @@ export class TabGroupUI {
     return undefined;
   }
 
-  private normalizeDraggedCollapsedGroup(): boolean {
-    const currentOrder = this._adapter.getTabOrder?.();
-    const members = this._draggedGroupMemberTabIds;
-    const anchorTabId = this._draggedGroupAnchorTabId;
-    if (!currentOrder || !members?.length || !anchorTabId) return false;
+  private startCollapsedGroupDrag(
+    event: Event,
+    groupId: string,
+    header: HTMLElement,
+  ): void {
+    const group = this._model.getGroup(groupId);
+    if (!group?.collapsed) return;
 
-    const anchorIndex = currentOrder.indexOf(anchorTabId);
-    if (anchorIndex === -1) return false;
+    event.stopImmediatePropagation();
+    const memberTabIds = this.getRuntimeTabIdsForGroup(group);
+    if (!memberTabIds.length) return;
 
-    const memberSet = new Set(members);
-    const insertionIndex = currentOrder
-      .slice(0, anchorIndex)
-      .filter((tabId) => !memberSet.has(tabId)).length;
-    const ungroupedOrder = currentOrder.filter(
-      (tabId) => !memberSet.has(tabId),
-    );
-    const desiredOrder = [
-      ...ungroupedOrder.slice(0, insertionIndex),
-      ...members,
-      ...ungroupedOrder.slice(insertionIndex),
-    ];
-
-    if (desiredOrder.every((tabId, index) => currentOrder[index] === tabId)) {
-      return false;
+    const dataTransfer = (event as DragEvent).dataTransfer;
+    if (dataTransfer) {
+      dataTransfer.effectAllowed = "move";
+      dataTransfer.setData("application/x-zotero-grouptag-group", groupId);
     }
 
-    this._adapter.reorderTabs?.(desiredOrder);
-    return true;
+    this._collapsedGroupDrag = { groupId, memberTabIds, header };
+    this._dragInProgress = true;
+    this._suppressNextHeaderClick = true;
+    header.classList.add("grouptag-header-dragging");
+    this._tabContainer?.classList.add("grouptag-group-dragging");
+  }
+
+  private readonly handleCollapsedGroupDragOver = (event: Event): void => {
+    if (!this._collapsedGroupDrag) return;
+
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    const dataTransfer = (event as DragEvent).dataTransfer;
+    if (dataTransfer) dataTransfer.dropEffect = "move";
+
+    const target = this.getCollapsedGroupDropTarget(event);
+    if (!target) {
+      this.clearDropIndicator();
+      return;
+    }
+
+    if (
+      this._dropIndicator === target.indicator &&
+      target.indicator.getAttribute("data-grouptag-drop-position") ===
+        target.position
+    ) {
+      return;
+    }
+
+    this.clearDropIndicator();
+    target.indicator.setAttribute(
+      "data-grouptag-drop-position",
+      target.position,
+    );
+    this._dropIndicator = target.indicator;
+  };
+
+  private readonly handleCollapsedGroupDrop = (event: Event): void => {
+    if (!this._collapsedGroupDrag) return;
+
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    const target = this.getCollapsedGroupDropTarget(event);
+    if (target) {
+      this.moveCollapsedGroup(target.tabId, target.position);
+    }
+    this.finishCollapsedGroupDrag();
+  };
+
+  private getCollapsedGroupDropTarget(
+    event: Event,
+  ):
+    | { tabId: string; position: "before" | "after"; indicator: Element }
+    | undefined {
+    const tab = this.findContainingTab(event.target);
+    const tabId = tab?.getAttribute("data-id");
+    if (!tab || !tabId || !this._collapsedGroupDrag) return undefined;
+
+    const targetGroup = this.getGroupForRuntimeTabId(tabId);
+    if (targetGroup?.id === this._collapsedGroupDrag.groupId) {
+      return undefined;
+    }
+
+    const mouseEvent = event as MouseEvent;
+    const bounds = tab.getBoundingClientRect();
+    const position =
+      mouseEvent.clientX < bounds.left + bounds.width / 2 ? "before" : "after";
+    let indicator = tab;
+
+    if (targetGroup) {
+      const targetTabIds = this.getRuntimeTabIdsForGroup(targetGroup);
+      const boundaryTabId =
+        targetGroup.collapsed || position === "before"
+          ? targetTabIds[0]
+          : targetTabIds[targetTabIds.length - 1];
+      indicator =
+        (boundaryTabId
+          ? this._document.querySelector(`[data-id="${boundaryTabId}"]`)
+          : null) ?? tab;
+    }
+
+    return { tabId, position, indicator };
+  }
+
+  private moveCollapsedGroup(
+    targetTabId: string,
+    position: "before" | "after",
+  ): void {
+    const currentOrder = this._adapter.getTabOrder?.();
+    const drag = this._collapsedGroupDrag;
+    if (!currentOrder || !drag || !this._adapter.reorderTabs) return;
+
+    const sourceSet = new Set(drag.memberTabIds);
+    if (sourceSet.has(targetTabId)) return;
+
+    const remainingOrder = currentOrder.filter(
+      (tabId) => !sourceSet.has(tabId),
+    );
+    const targetGroup = this.getGroupForRuntimeTabId(targetTabId);
+    const targetTabIds = targetGroup
+      ? this.getRuntimeTabIdsForGroup(targetGroup).filter((tabId) =>
+          remainingOrder.includes(tabId),
+        )
+      : [targetTabId];
+    const targetIndexes = targetTabIds
+      .map((tabId) => remainingOrder.indexOf(tabId))
+      .filter((index) => index >= 0);
+    if (!targetIndexes.length) return;
+
+    const insertionIndex =
+      position === "before"
+        ? Math.min(...targetIndexes)
+        : Math.max(...targetIndexes) + 1;
+    const desiredOrder = [
+      ...remainingOrder.slice(0, insertionIndex),
+      ...drag.memberTabIds,
+      ...remainingOrder.slice(insertionIndex),
+    ];
+    if (desiredOrder.every((tabId, index) => currentOrder[index] === tabId)) {
+      return;
+    }
+
+    this._adapter.reorderTabs(desiredOrder);
+  }
+
+  private getRuntimeTabIdsForGroup(group: TabGroup): string[] {
+    const stableIds = new Set(group.tabIds);
+    const runtimeIds = new Set(
+      this._adapter
+        .getOpenReaderTabs()
+        .filter((snapshot) => stableIds.has(snapshot.identity.stableId))
+        .map((snapshot) => snapshot.tabId),
+    );
+    const currentOrder = this._adapter.getTabOrder?.();
+
+    return currentOrder
+      ? currentOrder.filter((tabId) => runtimeIds.has(tabId))
+      : Array.from(runtimeIds);
+  }
+
+  private getGroupForRuntimeTabId(tabId: string): TabGroup | undefined {
+    const snapshot = this._adapter
+      .getOpenReaderTabs()
+      .find((tab) => tab.tabId === tabId);
+    return snapshot ? this.getGroupForTab(snapshot) : undefined;
+  }
+
+  private finishCollapsedGroupDrag(): void {
+    const header = this._collapsedGroupDrag?.header;
+    this.clearDropIndicator();
+    header?.classList.remove("grouptag-header-dragging");
+    this._tabContainer?.classList.remove("grouptag-group-dragging");
+    this._collapsedGroupDrag = undefined;
+    this._dragInProgress = false;
+    this._needsRender = false;
+    this.requestRender();
+
+    const win = this._document.defaultView;
+    (win?.setTimeout ?? setTimeout)(() => {
+      this._suppressNextHeaderClick = false;
+    }, 0);
+  }
+
+  private clearDropIndicator(): void {
+    this._dropIndicator?.removeAttribute("data-grouptag-drop-position");
+    this._dropIndicator = undefined;
   }
 
   private ensureNativeContextMenu(): void {
@@ -889,12 +1029,27 @@ export class TabGroupUI {
       event.stopPropagation();
     };
     const stopExpandedGroupDrag = (event: Event): void => {
-      if (!this._model.getGroup(group.id)?.collapsed) {
-        stopEvent(event);
+      if (this._model.getGroup(group.id)?.collapsed) {
+        event.stopPropagation();
+        return;
       }
+      stopEvent(event);
     };
     header.addEventListener("mousedown", stopExpandedGroupDrag);
-    header.addEventListener("dragstart", stopExpandedGroupDrag);
+    header.addEventListener("dragstart", (event: Event): void => {
+      if (!this._model.getGroup(group.id)?.collapsed) {
+        stopEvent(event);
+        return;
+      }
+      this.startCollapsedGroupDrag(event, group.id, header);
+    });
+    header.addEventListener("dragend", (event: Event): void => {
+      if (!this._model.getGroup(group.id)?.collapsed) return;
+      event.stopImmediatePropagation();
+      if (this._collapsedGroupDrag?.groupId === group.id) {
+        this.finishCollapsedGroupDrag();
+      }
+    });
     header.addEventListener("click", (event: Event): void => {
       stopEvent(event);
       if (this._suppressNextHeaderClick) {
@@ -912,6 +1067,7 @@ export class TabGroupUI {
   }
 
   private updateHeader(header: HTMLElement, group: TabGroup): void {
+    header.setAttribute("draggable", String(group.collapsed));
     header.setAttribute("data-group-color", group.color);
     header.setAttribute("data-group-collapsed", String(group.collapsed));
     header.setAttribute("aria-expanded", String(!group.collapsed));
