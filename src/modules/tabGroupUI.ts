@@ -1,4 +1,5 @@
 import {
+  DEFAULT_TAB_GROUP_COLOR,
   TAB_GROUP_COLORS,
   resolveTabGroupColor,
   type TabGroupModel,
@@ -13,6 +14,13 @@ import type { TabGroupCommandHandler } from "./tabGroupCommands";
 
 const GROUPTAG_PLUGIN_ID = "grouptag@zotero.org";
 const GROUPTAG_TAB_MENU_ID = "grouptag-tab-actions";
+const AUTOMATIC_TAB_GROUP_COLORS: readonly (typeof TAB_GROUP_COLORS)[number][] =
+  [
+    DEFAULT_TAB_GROUP_COLOR,
+    ...TAB_GROUP_COLORS.filter(
+      (color) => color !== DEFAULT_TAB_GROUP_COLOR,
+    ),
+  ];
 
 interface NativeTabMenuContext {
   readonly menuElem: XULElement;
@@ -652,7 +660,7 @@ export class TabGroupUI {
             context.setVisible(true);
           }
         },
-        onCommand: (event, context): void => {
+        onCommand: (_event, context): void => {
           try {
             const snapshot = this.getSnapshotForContext(context);
             if (!snapshot || !this._commands) return;
@@ -660,14 +668,12 @@ export class TabGroupUI {
             const name = this.promptUser("New group name:", "New Group");
             if (!name) return;
 
-            this.showColorPalette(event, "#58B0DF", (color): void => {
-              const group = this._commands?.createGroup(name, color);
-              if (!group) return;
-              this._commands?.assignTab(
-                group.id,
-                snapshot.identity.stableId,
-              );
-            });
+            const group = this._commands.createGroup(
+              name,
+              this.getAutomaticGroupColor(),
+            );
+            if (!group) return;
+            this._commands.assignTab(group.id, snapshot.identity.stableId);
           } catch {
             // Cross-compartment call failed — user can retry
           }
@@ -766,6 +772,23 @@ export class TabGroupUI {
 
     const currentGroup = this.getGroupForTab(snapshot);
     return this._model.groups.filter((group) => group.id !== currentGroup?.id);
+  }
+
+  private getAutomaticGroupColor(): (typeof TAB_GROUP_COLORS)[number] {
+    const usedColors = new Set(
+      this._model.groups.map((group) => resolveTabGroupColor(group.color)),
+    );
+    const unusedColor = AUTOMATIC_TAB_GROUP_COLORS.find(
+      (color) => !usedColors.has(color),
+    );
+
+    return (
+      unusedColor ??
+      AUTOMATIC_TAB_GROUP_COLORS[
+        this._model.groups.length % AUTOMATIC_TAB_GROUP_COLORS.length
+      ] ??
+      DEFAULT_TAB_GROUP_COLOR
+    );
   }
 
   private clearUI(): void {

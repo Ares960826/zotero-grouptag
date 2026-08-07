@@ -11,7 +11,7 @@ assignments from a right-click context menu.
 ## Features
 
 - **Colored group headers** styled like Chrome tab groups
-- **Visual color palette** with 33 curated colors—no color codes to type
+- **Automatic initial colors** with a 33-color palette for later changes
 - **Per-tab underline indicators** matching the group color
 - **Collapsible groups** that hide grouped tabs without closing their PDFs
 - **Contiguous groups** that stay together while preserving manual ordering inside each group
@@ -48,11 +48,11 @@ macOS, Windows, and Linux are all supported.
 2. Right-click any PDF tab
 3. Click **Assign to New Group**
 4. Enter a group name and press OK
-5. Choose a color from the visual palette
 
-A colored header appears inside the first tab of the group. Grouped tabs are
-kept together automatically, and you can drag tabs to reorder them within the
-group.
+A colored header appears immediately inside the first tab of the group. New
+groups receive distinct colors automatically whenever possible. Grouped tabs
+are kept together automatically, and you can drag tabs to reorder them within
+the group.
 
 ### Collapse or expand a group
 
