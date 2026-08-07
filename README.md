@@ -14,6 +14,7 @@ assignments from a right-click context menu.
 - **Automatic initial colors** with a 33-color palette for later changes
 - **Per-tab underline indicators** matching the group color
 - **Collapsible groups** that hide grouped tabs without closing their PDFs
+- **Stable group movement** with a clear drop marker while surrounding tabs stay still
 - **Contiguous groups** that stay together while preserving manual ordering inside each group
 - **Create groups** from any PDF tab via right-click → "Assign to New Group"
 - **Rename, recolor, collapse, expand, and delete groups** via the group header
@@ -70,6 +71,9 @@ group header. A drop marker shows the destination while the surrounding tabs
 stay still; the group moves as one unit when you release it. Expand it again
 after moving if needed.
 
+Expanded groups intentionally stay fixed because moving the header and all
+visible PDF tabs as one block would conflict with Zotero's native tab dragging.
+
 ### Assign more tabs to a group
 
 Right-click any PDF tab → **Assign to: [Group Name]**
@@ -85,7 +89,9 @@ keep the empty group for later reuse.
 
 Right-click the group header bar and choose the required action.
 
-Choose **Change Color** to select another color from the visual palette.
+Choose **Change Color** to select another color from the 33-color visual
+palette. Newly created groups receive a distinct color automatically whenever
+possible, so manual color selection is optional.
 
 ## License
 
