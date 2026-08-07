@@ -1,9 +1,18 @@
-/* Tab Group Headers */
+/* The group header is nested inside the first tab. Keeping it out of the
+   .tabs child list preserves Zotero's native drag-index calculations. */
+.grouptag-group-start {
+  --grouptag-header-width: 120px;
+  flex: 0 0 300px !important;
+  min-width: 300px !important;
+  max-width: 360px !important;
+}
+
 .grouptag-header {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin: 0 4px;
+  display: block;
+  box-sizing: border-box;
+  flex: 0 0 var(--grouptag-header-width);
+  width: var(--grouptag-header-width);
+  margin-inline-end: 8px;
   padding: 2px 8px;
   border-radius: 4px;
   font-weight: 500;
@@ -11,10 +20,8 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 150px;
   user-select: none;
   cursor: default;
-  transition: max-width 0.2s ease-in-out;
   /* Zotero 8 native styling */
   background-color: var(--theme-tab-background);
   color: var(--theme-text-color);
@@ -35,8 +42,77 @@
 }
 
 .grouptag-header[data-group-color] {
-  color: #fff; /* Default for dark annotation colors */
+  color: var(--group-text-color, #fff);
   background-color: var(--group-color);
+}
+
+.grouptag-tab[data-group-collapsed="true"]:not(.grouptag-group-start) {
+  display: none !important;
+}
+
+.grouptag-group-start[data-group-collapsed="true"] {
+  flex: 0 0 132px !important;
+  min-width: 132px !important;
+  max-width: 132px !important;
+}
+
+.grouptag-group-start[data-group-collapsed="true"] > :not(.grouptag-header) {
+  display: none !important;
+}
+
+.grouptag-group-start[data-group-collapsed="true"] .grouptag-header {
+  flex-basis: 100%;
+  width: 100%;
+  margin-inline-end: 0;
+  cursor: grab;
+  transition:
+    opacity 120ms ease-out,
+    transform 120ms ease-out,
+    box-shadow 120ms ease-out;
+}
+
+.grouptag-group-start[data-group-collapsed="true"] .grouptag-header:active {
+  cursor: grabbing;
+}
+
+.grouptag-header-dragging {
+  opacity: 0.72;
+  transform: scale(0.98);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.18);
+  cursor: grabbing !important;
+}
+
+.grouptag-group-dragging {
+  cursor: grabbing;
+}
+
+[data-grouptag-drop-position] {
+  position: relative;
+}
+
+[data-grouptag-drop-position]::before {
+  content: "";
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  z-index: 1000;
+  width: 3px;
+  border-radius: 3px;
+  background: var(--theme-focus-outline-color, #0060df);
+  box-shadow: 0 0 0 1px var(--theme-body-background, #fff);
+  pointer-events: none;
+}
+
+[data-grouptag-drop-position="before"]::before {
+  inset-inline-start: -2px;
+}
+
+[data-grouptag-drop-position="after"]::before {
+  inset-inline-end: -2px;
+}
+
+.grouptag-group-start[data-group-collapsed="true"]::after {
+  display: none;
 }
 
 /* Tab Underlines / Indicators */
@@ -57,56 +133,73 @@
 }
 
 /* Named Color Variables for Zotero 8 Patterns */
-.grouptag-header[data-group-color="blue"],
 .grouptag-tab[data-group-color="blue"] {
   --group-color: #2ea8e5;
 }
 
-.grouptag-header[data-group-color="green"],
 .grouptag-tab[data-group-color="green"] {
   --group-color: #5fb236;
 }
 
-.grouptag-header[data-group-color="yellow"],
 .grouptag-tab[data-group-color="yellow"] {
   --group-color: #ffd400;
   color: #202124; /* Dark text for yellow */
 }
 
-.grouptag-header[data-group-color="orange"],
 .grouptag-tab[data-group-color="orange"] {
   --group-color: #f19837;
 }
 
-.grouptag-header[data-group-color="red"],
 .grouptag-tab[data-group-color="red"] {
   --group-color: #ff6666;
 }
 
-.grouptag-header[data-group-color="purple"],
 .grouptag-tab[data-group-color="purple"] {
   --group-color: #a28ae5;
 }
 
-.grouptag-header[data-group-color="magenta"],
 .grouptag-tab[data-group-color="magenta"] {
   --group-color: #e56eee;
 }
 
-.grouptag-header[data-group-color="gray"],
 .grouptag-tab[data-group-color="gray"] {
   --group-color: #aaaaaa;
 }
 
 /* Inline Style Support (for hex colors) */
-.grouptag-header[style*="--group-color"],
 .grouptag-tab[style*="--group-color"] {
   /* Inherits from inline style */
 }
 
-/* Adjust header text */
-.grouptag-header-label {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.grouptag-color-palette {
+  padding: 8px;
+}
+
+.grouptag-color-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 28px);
+  gap: 6px;
+  padding: 2px;
+}
+
+.grouptag-color-swatch {
+  box-sizing: border-box;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 7px;
+  background: var(--swatch-color);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+  cursor: pointer;
+}
+
+.grouptag-color-swatch:hover,
+.grouptag-color-swatch:focus-visible {
+  border-color: var(--theme-focus-outline-color, #0060df);
+  outline: none;
+}
+
+.grouptag-color-swatch[aria-selected="true"] {
+  border-color: var(--theme-text-color, #202124);
 }

@@ -1,4 +1,11 @@
-import type { TabGroupModel, TabGroup } from "./tabGroupModel";
+import {
+  DEFAULT_TAB_GROUP_COLOR,
+  TAB_GROUP_COLORS,
+  resolveTabGroupColor,
+  type TabGroupModel,
+  type TabGroup,
+  type TabGroupColor,
+} from "./tabGroupModel.ts";
 import type {
   ZoteroTabAdapter,
   OpenReaderTabSnapshot,
@@ -7,6 +14,11 @@ import type { TabGroupCommandHandler } from "./tabGroupCommands";
 
 const GROUPTAG_PLUGIN_ID = "grouptag@zotero.org";
 const GROUPTAG_TAB_MENU_ID = "grouptag-tab-actions";
+const AUTOMATIC_TAB_GROUP_COLORS: readonly (typeof TAB_GROUP_COLORS)[number][] =
+  [
+    DEFAULT_TAB_GROUP_COLOR,
+    ...TAB_GROUP_COLORS.filter((color) => color !== DEFAULT_TAB_GROUP_COLOR),
+  ];
 
 interface NativeTabMenuContext {
   readonly menuElem: XULElement;
@@ -31,8 +43,8 @@ interface NativeMenuOptions {
 
 type NativeContextMenuPopup = XULElement & {
   openPopupAtScreen(x: number, y: number, isContextMenu: boolean): void;
+  hidePopup(): void;
 };
-
 
 interface NativeMenuManager {
   registerMenu(options: NativeMenuOptions): string | false;
@@ -48,6 +60,18 @@ interface ZoteroGlobal {
   getMainWindow(): ZoteroMainWindow;
 }
 
+interface GeckoPromptService {
+  prompt(
+    parent: unknown,
+    title: string,
+    message: string,
+    result: { value: string },
+    checkMessage: string | null,
+    checkState: { value: boolean },
+  ): boolean;
+  alert(parent: unknown, title: string, message: string): void;
+  confirm(parent: unknown, title: string, message: string): boolean;
+}
 
 /**
  * Handles the Zotero 8 tab grouping UI using native APIs.
@@ -61,10 +85,22 @@ export class TabGroupUI {
   private _headerElements = new Map<string, HTMLElement>();
   private _observer: MutationObserver | undefined;
   private _contextMenu: NativeContextMenuPopup | undefined;
+  private _colorPalette: NativeContextMenuPopup | undefined;
+  private _pendingColorSelection:
+    | ((color: (typeof TAB_GROUP_COLORS)[number]) => void)
+    | undefined;
+  private _tabContainer: Element | undefined;
+  private _dragInProgress = false;
+  private _collapsedGroupDrag:
+    | { groupId: string; memberTabIds: string[]; header: HTMLElement }
+    | undefined;
+  private _dropIndicator: Element | undefined;
+  private _suppressNextHeaderClick = false;
   private _registeredMenuID: string | undefined;
   private _isRendering = false;
   private _needsRender = false;
   private _renderScheduled = false;
+  private _menuRegistrationScheduled = false;
 
   constructor(
     model: TabGroupModel,
@@ -83,6 +119,7 @@ export class TabGroupUI {
    */
   mount(): void {
     this.ensureNativeContextMenu();
+    this.ensureColorPalette();
 
     this._unsubscribe = this._adapter.subscribe((tabs) => {
       this.requestRender(tabs);
@@ -104,6 +141,12 @@ export class TabGroupUI {
       this._contextMenu.parentNode.removeChild(this._contextMenu);
     }
     this._contextMenu = undefined;
+    if (this._colorPalette?.parentNode) {
+      this._colorPalette.parentNode.removeChild(this._colorPalette);
+    }
+    this._colorPalette = undefined;
+    this._pendingColorSelection = undefined;
+    this.detachDragListeners();
     if (this._unsubscribe) {
       this._unsubscribe();
       this._unsubscribe = undefined;
@@ -120,11 +163,25 @@ export class TabGroupUI {
    * Forces a re-render of the UI.
    */
   update(): void {
-    this.registerNativeMenus();
+    if (!this._menuRegistrationScheduled) {
+      this._menuRegistrationScheduled = true;
+      const win = this._document.defaultView;
+      (win?.setTimeout ?? setTimeout)(() => {
+        this._menuRegistrationScheduled = false;
+        if (this._unsubscribe) {
+          this.registerNativeMenus();
+        }
+      }, 0);
+    }
     this.requestRender(this._adapter.getOpenReaderTabs());
   }
 
   private requestRender(_tabs?: readonly OpenReaderTabSnapshot[]): void {
+    if (this._dragInProgress) {
+      this._needsRender = true;
+      return;
+    }
+
     if (this._isRendering) {
       this._needsRender = true;
       return;
@@ -154,52 +211,70 @@ export class TabGroupUI {
    * Non-destructive render loop that injects headers into the Zotero tab bar.
    */
   private render(tabs: readonly OpenReaderTabSnapshot[]): void {
+    if (this._dragInProgress) {
+      this._needsRender = true;
+      return;
+    }
+
     if (this._isRendering) {
       this._needsRender = true;
       return;
     }
 
-    const tabContainer = this._document.querySelector(
-      ".tabs-wrapper .tabs",
-    );
+    const tabContainer = this._document.querySelector(".tabs-wrapper .tabs");
     if (!tabContainer) return;
 
     this._isRendering = true;
 
     try {
+      if (this.ensureContiguousTabOrder(tabs)) {
+        this._needsRender = true;
+        return;
+      }
+
       // Track which groups we've already seen in this render pass to identify the first tab of each group
       const seenGroups = new Set<string>();
       const currentHeaders = new Set<string>();
+      const renderedTabIds = new Set<string>();
 
       for (const tab of tabs) {
         const tabEl = this._document.querySelector(
           `[data-id="${tab.tabId}"]`,
-        );
+        ) as HTMLElement | null;
         if (!tabEl) continue;
+        renderedTabIds.add(tab.tabId);
+        this.clearGroupLayout(tabEl);
 
         const group = this.getGroupForTab(tab);
         if (group) {
+          const resolvedColor = resolveTabGroupColor(group.color);
           // Apply visual group styling to the tab itself
           tabEl.setAttribute("data-group-color", group.color);
+          setCSSProperty(tabEl, "--group-color", resolvedColor);
+          setCSSProperty(
+            tabEl,
+            "--group-text-color",
+            getContrastingTextColor(resolvedColor),
+          );
           tabEl.classList.add("grouptag-tab");
+          tabEl.setAttribute("data-group-collapsed", String(group.collapsed));
 
           if (!seenGroups.has(group.id)) {
             seenGroups.add(group.id);
             currentHeaders.add(group.id);
+            tabEl.classList.add("grouptag-group-start");
+            tabEl.setAttribute("data-group-id", group.id);
+            tabEl.setAttribute("data-group-name", group.name);
+            tabEl.setAttribute("aria-expanded", String(!group.collapsed));
 
-            // This is the first tab of a group. Ensure header is positioned immediately before it.
             let header = this._headerElements.get(group.id);
             if (!header) {
               header = this.createHeader(group);
               this._headerElements.set(group.id, header);
-            } else {
-              // Update label/color in case they changed
-              this.updateHeader(header, group);
             }
-
-            // Move header if it's not in the correct position
-            if (tabEl.previousSibling !== header) {
-              tabContainer.insertBefore(header, tabEl);
+            this.updateHeader(header, group);
+            if (header.parentNode !== tabEl) {
+              tabEl.insertBefore(header, tabEl.firstChild);
             }
           }
         } else {
@@ -209,12 +284,18 @@ export class TabGroupUI {
         }
       }
 
-      // Remove headers for groups that no longer exist or have no tabs
+      for (const tabEl of Array.from(
+        tabContainer.querySelectorAll(".grouptag-tab"),
+      ) as HTMLElement[]) {
+        const tabId = tabEl.getAttribute("data-id");
+        if (!tabId || !renderedTabIds.has(tabId)) {
+          this.clearTabGroupState(tabEl);
+        }
+      }
+
       for (const [groupId, header] of this._headerElements.entries()) {
         if (!currentHeaders.has(groupId)) {
-          if (header.parentNode) {
-            header.parentNode.removeChild(header);
-          }
+          header.parentNode?.removeChild(header);
           this._headerElements.delete(groupId);
         }
       }
@@ -243,11 +324,14 @@ export class TabGroupUI {
       return;
     }
 
+    this.attachDragListeners(tabContainer);
+
     // MutationObserver is a window global, not available in the bootstrap
     // sandbox's globalThis. Access it from the document's owning window.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const MObserver = (this._document.defaultView as any)
-      ?.MutationObserver as typeof MutationObserver | undefined;
+    const MObserver = (this._document.defaultView as any)?.MutationObserver as
+      | typeof MutationObserver
+      | undefined;
     if (!MObserver) return;
 
     this._observer = new MObserver(() => {
@@ -260,6 +344,255 @@ export class TabGroupUI {
       childList: true,
       subtree: false,
     });
+  }
+
+  private attachDragListeners(tabContainer: Element): void {
+    if (this._tabContainer === tabContainer) return;
+
+    this.detachDragListeners();
+    this._tabContainer = tabContainer;
+    tabContainer.addEventListener("dragstart", this.handleTabDragStart);
+    tabContainer.addEventListener("dragend", this.handleTabDragEnd);
+    tabContainer.addEventListener(
+      "dragover",
+      this.handleCollapsedGroupDragOver,
+      true,
+    );
+    tabContainer.addEventListener("drop", this.handleCollapsedGroupDrop, true);
+  }
+
+  private detachDragListeners(): void {
+    this._tabContainer?.removeEventListener(
+      "dragstart",
+      this.handleTabDragStart,
+    );
+    this._tabContainer?.removeEventListener("dragend", this.handleTabDragEnd);
+    this._tabContainer?.removeEventListener(
+      "dragover",
+      this.handleCollapsedGroupDragOver,
+      true,
+    );
+    this._tabContainer?.removeEventListener(
+      "drop",
+      this.handleCollapsedGroupDrop,
+      true,
+    );
+    this.clearDropIndicator();
+    this._tabContainer = undefined;
+    this._dragInProgress = false;
+    this._collapsedGroupDrag = undefined;
+  }
+
+  private readonly handleTabDragStart = (): void => {
+    this._dragInProgress = true;
+  };
+
+  private readonly handleTabDragEnd = (): void => {
+    this._dragInProgress = false;
+    this._needsRender = false;
+    this.requestRender();
+
+    const win = this._document.defaultView;
+    (win?.setTimeout ?? setTimeout)(() => {
+      this._suppressNextHeaderClick = false;
+    }, 0);
+  };
+
+  private findContainingTab(target: EventTarget | null): Element | undefined {
+    let element = target as Element | null;
+    while (element && element !== this._tabContainer) {
+      if (element.getAttribute?.("data-id")) {
+        return element;
+      }
+      element = element.parentNode as Element | null;
+    }
+    return undefined;
+  }
+
+  private startCollapsedGroupDrag(
+    event: Event,
+    groupId: string,
+    header: HTMLElement,
+  ): void {
+    const group = this._model.getGroup(groupId);
+    if (!group?.collapsed) return;
+
+    event.stopImmediatePropagation();
+    const memberTabIds = this.getRuntimeTabIdsForGroup(group);
+    if (!memberTabIds.length) return;
+
+    const dataTransfer = (event as DragEvent).dataTransfer;
+    if (dataTransfer) {
+      dataTransfer.effectAllowed = "move";
+      dataTransfer.setData("application/x-zotero-grouptag-group", groupId);
+    }
+
+    this._collapsedGroupDrag = { groupId, memberTabIds, header };
+    this._dragInProgress = true;
+    this._suppressNextHeaderClick = true;
+    header.classList.add("grouptag-header-dragging");
+    this._tabContainer?.classList.add("grouptag-group-dragging");
+  }
+
+  private readonly handleCollapsedGroupDragOver = (event: Event): void => {
+    if (!this._collapsedGroupDrag) return;
+
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    const dataTransfer = (event as DragEvent).dataTransfer;
+    if (dataTransfer) dataTransfer.dropEffect = "move";
+
+    const target = this.getCollapsedGroupDropTarget(event);
+    if (!target) {
+      this.clearDropIndicator();
+      return;
+    }
+
+    if (
+      this._dropIndicator === target.indicator &&
+      target.indicator.getAttribute("data-grouptag-drop-position") ===
+        target.position
+    ) {
+      return;
+    }
+
+    this.clearDropIndicator();
+    target.indicator.setAttribute(
+      "data-grouptag-drop-position",
+      target.position,
+    );
+    this._dropIndicator = target.indicator;
+  };
+
+  private readonly handleCollapsedGroupDrop = (event: Event): void => {
+    if (!this._collapsedGroupDrag) return;
+
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    const target = this.getCollapsedGroupDropTarget(event);
+    if (target) {
+      this.moveCollapsedGroup(target.tabId, target.position);
+    }
+    this.finishCollapsedGroupDrag();
+  };
+
+  private getCollapsedGroupDropTarget(
+    event: Event,
+  ):
+    | { tabId: string; position: "before" | "after"; indicator: Element }
+    | undefined {
+    const tab = this.findContainingTab(event.target);
+    const tabId = tab?.getAttribute("data-id");
+    if (!tab || !tabId || !this._collapsedGroupDrag) return undefined;
+
+    const targetGroup = this.getGroupForRuntimeTabId(tabId);
+    if (targetGroup?.id === this._collapsedGroupDrag.groupId) {
+      return undefined;
+    }
+
+    const mouseEvent = event as MouseEvent;
+    const bounds = tab.getBoundingClientRect();
+    const position =
+      mouseEvent.clientX < bounds.left + bounds.width / 2 ? "before" : "after";
+    let indicator = tab;
+
+    if (targetGroup) {
+      const targetTabIds = this.getRuntimeTabIdsForGroup(targetGroup);
+      const boundaryTabId =
+        targetGroup.collapsed || position === "before"
+          ? targetTabIds[0]
+          : targetTabIds[targetTabIds.length - 1];
+      indicator =
+        (boundaryTabId
+          ? this._document.querySelector(`[data-id="${boundaryTabId}"]`)
+          : null) ?? tab;
+    }
+
+    return { tabId, position, indicator };
+  }
+
+  private moveCollapsedGroup(
+    targetTabId: string,
+    position: "before" | "after",
+  ): void {
+    const currentOrder = this._adapter.getTabOrder?.();
+    const drag = this._collapsedGroupDrag;
+    if (!currentOrder || !drag || !this._adapter.reorderTabs) return;
+
+    const sourceSet = new Set(drag.memberTabIds);
+    if (sourceSet.has(targetTabId)) return;
+
+    const remainingOrder = currentOrder.filter(
+      (tabId) => !sourceSet.has(tabId),
+    );
+    const targetGroup = this.getGroupForRuntimeTabId(targetTabId);
+    const targetTabIds = targetGroup
+      ? this.getRuntimeTabIdsForGroup(targetGroup).filter((tabId) =>
+          remainingOrder.includes(tabId),
+        )
+      : [targetTabId];
+    const targetIndexes = targetTabIds
+      .map((tabId) => remainingOrder.indexOf(tabId))
+      .filter((index) => index >= 0);
+    if (!targetIndexes.length) return;
+
+    const insertionIndex =
+      position === "before"
+        ? Math.min(...targetIndexes)
+        : Math.max(...targetIndexes) + 1;
+    const desiredOrder = [
+      ...remainingOrder.slice(0, insertionIndex),
+      ...drag.memberTabIds,
+      ...remainingOrder.slice(insertionIndex),
+    ];
+    if (desiredOrder.every((tabId, index) => currentOrder[index] === tabId)) {
+      return;
+    }
+
+    this._adapter.reorderTabs(desiredOrder);
+  }
+
+  private getRuntimeTabIdsForGroup(group: TabGroup): string[] {
+    const stableIds = new Set(group.tabIds);
+    const runtimeIds = new Set(
+      this._adapter
+        .getOpenReaderTabs()
+        .filter((snapshot) => stableIds.has(snapshot.identity.stableId))
+        .map((snapshot) => snapshot.tabId),
+    );
+    const currentOrder = this._adapter.getTabOrder?.();
+
+    return currentOrder
+      ? currentOrder.filter((tabId) => runtimeIds.has(tabId))
+      : Array.from(runtimeIds);
+  }
+
+  private getGroupForRuntimeTabId(tabId: string): TabGroup | undefined {
+    const snapshot = this._adapter
+      .getOpenReaderTabs()
+      .find((tab) => tab.tabId === tabId);
+    return snapshot ? this.getGroupForTab(snapshot) : undefined;
+  }
+
+  private finishCollapsedGroupDrag(): void {
+    const header = this._collapsedGroupDrag?.header;
+    this.clearDropIndicator();
+    header?.classList.remove("grouptag-header-dragging");
+    this._tabContainer?.classList.remove("grouptag-group-dragging");
+    this._collapsedGroupDrag = undefined;
+    this._dragInProgress = false;
+    this._needsRender = false;
+    this.requestRender();
+
+    const win = this._document.defaultView;
+    (win?.setTimeout ?? setTimeout)(() => {
+      this._suppressNextHeaderClick = false;
+    }, 0);
+  }
+
+  private clearDropIndicator(): void {
+    this._dropIndicator?.removeAttribute("data-grouptag-drop-position");
+    this._dropIndicator = undefined;
   }
 
   private ensureNativeContextMenu(): void {
@@ -295,6 +628,14 @@ export class TabGroupUI {
       recolorItem.setAttribute("label", "Change Color");
       menu.appendChild(recolorItem);
 
+      const collapseItem = this._document.createElementNS(
+        "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul",
+        "menuitem",
+      );
+      collapseItem.id = "grouptag-header-collapse";
+      collapseItem.setAttribute("label", "Collapse Group");
+      menu.appendChild(collapseItem);
+
       const deleteItem = this._document.createElementNS(
         "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul",
         "menuitem",
@@ -306,6 +647,97 @@ export class TabGroupUI {
       popupParent.appendChild(menu);
     }
     this._contextMenu = menu;
+  }
+
+  private ensureColorPalette(): void {
+    const popupParent =
+      this._document.getElementById("mainPopupSet") ??
+      this._document.querySelector("popupset") ??
+      this._document.documentElement;
+    if (!popupParent) return;
+
+    let palette = this._document.getElementById(
+      "grouptag-color-palette",
+    ) as NativeContextMenuPopup | null;
+    if (!palette) {
+      palette = this._document.createElementNS(
+        "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul",
+        "panel",
+      ) as NativeContextMenuPopup;
+      palette.id = "grouptag-color-palette";
+      palette.className = "grouptag-color-palette";
+      palette.setAttribute("type", "arrow");
+      palette.setAttribute("orient", "vertical");
+
+      const grid = this._document.createElementNS(
+        "http://www.w3.org/1999/xhtml",
+        "div",
+      ) as HTMLElement;
+      grid.className = "grouptag-color-grid";
+      grid.setAttribute("role", "listbox");
+      grid.setAttribute("aria-label", "Group color");
+
+      for (const color of TAB_GROUP_COLORS) {
+        const swatch = this._document.createElementNS(
+          "http://www.w3.org/1999/xhtml",
+          "button",
+        ) as HTMLElement;
+        swatch.className = "grouptag-color-swatch";
+        swatch.setAttribute("type", "button");
+        swatch.setAttribute("data-color", color);
+        swatch.setAttribute("title", color);
+        swatch.setAttribute("aria-label", color);
+        setCSSProperty(swatch, "--swatch-color", color);
+        swatch.addEventListener("click", (event: Event): void => {
+          event.preventDefault();
+          event.stopPropagation();
+          const callback = this._pendingColorSelection;
+          this._pendingColorSelection = undefined;
+          callback?.(color);
+          this._colorPalette?.hidePopup();
+        });
+        grid.appendChild(swatch);
+      }
+
+      palette.appendChild(grid);
+      palette.addEventListener("popuphidden", (): void => {
+        this._pendingColorSelection = undefined;
+      });
+      popupParent.appendChild(palette);
+    }
+
+    this._colorPalette = palette;
+  }
+
+  private showColorPalette(
+    event: Event,
+    currentColor: TabGroupColor,
+    onSelect: (color: (typeof TAB_GROUP_COLORS)[number]) => void,
+  ): void {
+    if (!this._colorPalette) return;
+
+    const selectedColor = resolveTabGroupColor(currentColor);
+    for (const swatch of Array.from(
+      this._colorPalette.querySelectorAll(".grouptag-color-swatch"),
+    ) as HTMLElement[]) {
+      swatch.setAttribute(
+        "aria-selected",
+        String(swatch.getAttribute("data-color") === selectedColor),
+      );
+    }
+
+    this._pendingColorSelection = onSelect;
+    const mouseEvent = event as MouseEvent;
+    const win = this._document.defaultView;
+    const x =
+      Number.isFinite(mouseEvent.screenX) && mouseEvent.screenX > 0
+        ? mouseEvent.screenX
+        : (win?.screenX ?? 0) + Math.max(120, (win?.innerWidth ?? 480) / 2);
+    const y =
+      Number.isFinite(mouseEvent.screenY) && mouseEvent.screenY > 0
+        ? mouseEvent.screenY
+        : (win?.screenY ?? 0) + Math.max(120, (win?.innerHeight ?? 360) / 2);
+    this._colorPalette.openPopupAtScreen(x, y, false);
   }
 
   private registerNativeMenus(): void {
@@ -364,7 +796,7 @@ export class TabGroupUI {
           context.menuElem.setAttribute("label", "Assign to New Group");
           try {
             context.setVisible(this.canManageTabFromContext(context));
-          } catch (_e) {
+          } catch {
             context.setVisible(true);
           }
         },
@@ -376,11 +808,13 @@ export class TabGroupUI {
             const name = this.promptUser("New group name:", "New Group");
             if (!name) return;
 
-            const group = this._commands.createGroup(name);
+            const group = this._commands.createGroup(
+              name,
+              this.getAutomaticGroupColor(),
+            );
             if (!group) return;
-
             this._commands.assignTab(group.id, snapshot.identity.stableId);
-          } catch (_e) {
+          } catch {
             // Cross-compartment call failed — user can retry
           }
         },
@@ -391,23 +825,28 @@ export class TabGroupUI {
           context.menuElem.setAttribute("label", "Remove from Group");
           try {
             const snapshot = this.getSnapshotForContext(context);
-            context.setVisible(
-              !!(snapshot && this.getGroupForTab(snapshot)),
-            );
-          } catch (_e) {
+            context.setVisible(!!(snapshot && this.getGroupForTab(snapshot)));
+          } catch {
             context.setVisible(false);
           }
         },
         onCommand: (_event, context): void => {
           try {
             const snapshot = this.getSnapshotForContext(context);
-            const group = snapshot
-              ? this.getGroupForTab(snapshot)
-              : undefined;
+            const group = snapshot ? this.getGroupForTab(snapshot) : undefined;
             if (!snapshot || !group || !this._commands) return;
 
-            this._commands.unassignTab(group.id, snapshot.identity.stableId);
-          } catch (_e) {
+            const deleteEmptyGroup =
+              group.tabIds.length === 1 &&
+              this.confirmUser(
+                "This is the last tab in the group. Select OK to delete the group, or Cancel to keep the empty group for later use.",
+              );
+            this._commands.unassignTab(
+              group.id,
+              snapshot.identity.stableId,
+              deleteEmptyGroup,
+            );
+          } catch {
             // Silently fail
           }
         },
@@ -419,19 +858,14 @@ export class TabGroupUI {
         (group): NativeMenuDefinition => ({
           menuType: "menuitem",
           onShowing: (_event, context): void => {
-            context.menuElem.setAttribute(
-              "label",
-              "Assign to: " + group.name,
-            );
+            context.menuElem.setAttribute("label", "Assign to: " + group.name);
             try {
               const snapshot = this.getSnapshotForContext(context);
               const currentGroup = snapshot
                 ? this.getGroupForTab(snapshot)
                 : undefined;
-              context.setVisible(
-                !!snapshot && currentGroup?.id !== group.id,
-              );
-            } catch (_e) {
+              context.setVisible(!!snapshot && currentGroup?.id !== group.id);
+            } catch {
               context.setVisible(true);
             }
           },
@@ -440,11 +874,8 @@ export class TabGroupUI {
               const snapshot = this.getSnapshotForContext(context);
               if (!snapshot || !this._commands) return;
 
-              this._commands.assignTab(
-                group.id,
-                snapshot.identity.stableId,
-              );
-            } catch (_e) {
+              this._commands.assignTab(group.id, snapshot.identity.stableId);
+            } catch {
               // Silently fail
             }
           },
@@ -460,7 +891,10 @@ export class TabGroupUI {
   private getSnapshotForContext(
     context: Pick<NativeTabMenuContext, "tabID" | "tabType">,
   ): OpenReaderTabSnapshot | undefined {
-    if (context.tabType !== "reader") {
+    if (
+      context.tabType !== "reader" &&
+      !context.tabType.startsWith("reader-")
+    ) {
       return undefined;
     }
 
@@ -480,18 +914,32 @@ export class TabGroupUI {
     return this._model.groups.filter((group) => group.id !== currentGroup?.id);
   }
 
+  private getAutomaticGroupColor(): (typeof TAB_GROUP_COLORS)[number] {
+    const usedColors = new Set(
+      this._model.groups.map((group) => resolveTabGroupColor(group.color)),
+    );
+    const unusedColor = AUTOMATIC_TAB_GROUP_COLORS.find(
+      (color) => !usedColors.has(color),
+    );
+
+    return (
+      unusedColor ??
+      AUTOMATIC_TAB_GROUP_COLORS[
+        this._model.groups.length % AUTOMATIC_TAB_GROUP_COLORS.length
+      ] ??
+      DEFAULT_TAB_GROUP_COLOR
+    );
+  }
+
   private clearUI(): void {
-    for (const header of Array.from(this._headerElements.values())) {
-      if (header.parentNode) {
-        header.parentNode.removeChild(header);
-      }
+    for (const header of this._headerElements.values()) {
+      header.parentNode?.removeChild(header);
     }
     this._headerElements.clear();
 
     const styledTabs = this._document.querySelectorAll(".grouptag-tab");
     for (const tab of Array.from(styledTabs) as HTMLElement[]) {
-      tab.removeAttribute("data-group-color");
-      tab.classList.remove("grouptag-tab");
+      this.clearTabGroupState(tab);
     }
   }
 
@@ -501,36 +949,129 @@ export class TabGroupUI {
     );
   }
 
+  private ensureContiguousTabOrder(
+    tabs: readonly OpenReaderTabSnapshot[],
+  ): boolean {
+    const currentOrder = this._adapter.getTabOrder?.();
+    if (!currentOrder || !this._adapter.reorderTabs) {
+      return false;
+    }
+
+    const groupsByTabId = new Map<string, string>();
+    for (const tab of tabs) {
+      const group = this.getGroupForTab(tab);
+      if (!group) continue;
+
+      groupsByTabId.set(tab.tabId, group.id);
+    }
+
+    const membersByGroup = new Map<string, string[]>();
+    for (const tabId of currentOrder) {
+      const groupId = groupsByTabId.get(tabId);
+      if (!groupId) continue;
+      const members = membersByGroup.get(groupId) ?? [];
+      members.push(tabId);
+      membersByGroup.set(groupId, members);
+    }
+
+    const emittedGroups = new Set<string>();
+    const desiredOrder: string[] = [];
+    for (const tabId of currentOrder) {
+      const groupId = groupsByTabId.get(tabId);
+      if (!groupId) {
+        desiredOrder.push(tabId);
+        continue;
+      }
+
+      if (!emittedGroups.has(groupId)) {
+        emittedGroups.add(groupId);
+        desiredOrder.push(...(membersByGroup.get(groupId) ?? []));
+      }
+    }
+
+    if (
+      desiredOrder.length === currentOrder.length &&
+      desiredOrder.every((tabId, index) => currentOrder[index] === tabId)
+    ) {
+      return false;
+    }
+
+    this._adapter.reorderTabs(desiredOrder);
+    return true;
+  }
+
+  private clearGroupLayout(tab: HTMLElement): void {
+    tab.classList.remove("grouptag-group-start");
+    tab.removeAttribute("data-group-id");
+    tab.removeAttribute("data-group-name");
+    tab.removeAttribute("data-group-collapsed");
+    tab.removeAttribute("aria-expanded");
+  }
+
+  private clearTabGroupState(tab: HTMLElement): void {
+    this.clearGroupLayout(tab);
+    tab.removeAttribute("data-group-color");
+    removeCSSProperty(tab, "--group-color");
+    removeCSSProperty(tab, "--group-text-color");
+    tab.classList.remove("grouptag-tab");
+  }
+
   private createHeader(group: TabGroup): HTMLElement {
     const header = this._document.createElementNS(
       "http://www.w3.org/1999/xhtml",
-      "div",
+      "span",
     ) as HTMLElement;
     header.className = "grouptag-header";
-    header.setAttribute("data-group-id", group.id);
+    header.setAttribute("draggable", "false");
 
-    const label = this._document.createElementNS(
-      "http://www.w3.org/1999/xhtml",
-      "span",
-    );
-    label.className = "grouptag-header-label";
-    header.appendChild(label);
-
-    this.updateHeader(header, group);
-
-    header.addEventListener("contextmenu", (e: Event): void => {
-      this.showGroupContextMenu(e, group.id);
+    const stopEvent = (event: Event): void => {
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    const stopExpandedGroupDrag = (event: Event): void => {
+      if (this._model.getGroup(group.id)?.collapsed) {
+        event.stopPropagation();
+        return;
+      }
+      stopEvent(event);
+    };
+    header.addEventListener("mousedown", stopExpandedGroupDrag);
+    header.addEventListener("dragstart", (event: Event): void => {
+      if (!this._model.getGroup(group.id)?.collapsed) {
+        stopEvent(event);
+        return;
+      }
+      this.startCollapsedGroupDrag(event, group.id, header);
+    });
+    header.addEventListener("dragend", (event: Event): void => {
+      if (!this._model.getGroup(group.id)?.collapsed) return;
+      event.stopImmediatePropagation();
+      if (this._collapsedGroupDrag?.groupId === group.id) {
+        this.finishCollapsedGroupDrag();
+      }
+    });
+    header.addEventListener("click", (event: Event): void => {
+      stopEvent(event);
+      if (this._suppressNextHeaderClick) {
+        this._suppressNextHeaderClick = false;
+        return;
+      }
+      this._commands?.toggleGroupCollapsed(group.id);
+    });
+    header.addEventListener("contextmenu", (event: Event): void => {
+      stopEvent(event);
+      this.showGroupContextMenu(event, group.id);
     });
 
     return header;
   }
 
   private updateHeader(header: HTMLElement, group: TabGroup): void {
+    header.setAttribute("draggable", String(group.collapsed));
     header.setAttribute("data-group-color", group.color);
-    const label = header.querySelector(".grouptag-header-label");
-    if (label) {
-      label.textContent = group.name;
-    }
+    header.setAttribute("data-group-collapsed", String(group.collapsed));
+    header.setAttribute("aria-expanded", String(!group.collapsed));
+    header.textContent = `${group.collapsed ? "▸" : "▾"} ${group.name}`;
   }
 
   private showGroupContextMenu(e: Event, groupId: string): void {
@@ -539,15 +1080,14 @@ export class TabGroupUI {
     e.preventDefault();
     e.stopPropagation();
 
-    const renameItem = this._document.getElementById(
-      "grouptag-header-rename",
-    );
+    const renameItem = this._document.getElementById("grouptag-header-rename");
     const recolorItem = this._document.getElementById(
       "grouptag-header-recolor",
     );
-    const deleteItem = this._document.getElementById(
-      "grouptag-header-delete",
+    const collapseItem = this._document.getElementById(
+      "grouptag-header-collapse",
     );
+    const deleteItem = this._document.getElementById("grouptag-header-delete");
 
     // XUL menuitems don't support setting `oncommand` as a JS property.
     // Replace each element with a fresh clone to clear old listeners,
@@ -563,7 +1103,7 @@ export class TabGroupUI {
             group?.name ?? "Renamed Group",
           );
           if (name) this._commands!.renameGroup(groupId, name);
-        } catch (_e) {
+        } catch {
           // Cross-compartment error
         }
       });
@@ -575,17 +1115,28 @@ export class TabGroupUI {
       fresh.addEventListener("command", () => {
         try {
           const group = this._model.groups.find((g) => g.id === groupId);
-          const color = this.promptUser(
-            "Color (CSS name or #hex):",
-            group?.color ?? "blue",
-            (val) => {
-              const s = this._document.createElement("div").style;
-              s.color = val;
-              return s.color !== "";
-            },
-          );
-          if (color) this._commands!.recolorGroup(groupId, color);
-        } catch (_e) {
+          if (!group) return;
+          this.showColorPalette(e, group.color, (color): void => {
+            this._commands?.recolorGroup(groupId, color);
+          });
+        } catch {
+          // Cross-compartment error
+        }
+      });
+    }
+
+    if (collapseItem) {
+      const group = this._model.getGroup(groupId);
+      const fresh = collapseItem.cloneNode(true) as Element;
+      collapseItem.parentNode!.replaceChild(fresh, collapseItem);
+      fresh.setAttribute(
+        "label",
+        group?.collapsed ? "Expand Group" : "Collapse Group",
+      );
+      fresh.addEventListener("command", () => {
+        try {
+          this._commands!.toggleGroupCollapsed(groupId);
+        } catch {
           // Cross-compartment error
         }
       });
@@ -599,7 +1150,7 @@ export class TabGroupUI {
           if (this.confirmUser("Delete this group?")) {
             this._commands!.deleteGroup(groupId);
           }
-        } catch (_e) {
+        } catch {
           // Cross-compartment error
         }
       });
@@ -619,10 +1170,7 @@ export class TabGroupUI {
   ): string | null {
     // Use Services.prompt (Gecko global) instead of Components.classes
     // which is unavailable when callbacks run in the main window compartment.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const svc = (this._document.defaultView as any)?.Services?.prompt
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ?? (globalThis as any).Services?.prompt;
+    const svc = this.getPromptService();
     if (!svc) return null;
 
     const win = getZoteroGlobal().getMainWindow();
@@ -651,10 +1199,7 @@ export class TabGroupUI {
   }
 
   private confirmUser(message: string): boolean {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const svc = (this._document.defaultView as any)?.Services?.prompt
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ?? (globalThis as any).Services?.prompt;
+    const svc = this.getPromptService();
     if (!svc) return false;
 
     return svc.confirm(
@@ -663,8 +1208,21 @@ export class TabGroupUI {
       message,
     );
   }
-}
 
+  private getPromptService(): GeckoPromptService | undefined {
+    const windowWithServices = this._document.defaultView as
+      | (Window & { Services?: { prompt?: GeckoPromptService } })
+      | null;
+    const globalsWithServices = globalThis as typeof globalThis & {
+      Services?: { prompt?: GeckoPromptService };
+    };
+
+    return (
+      windowWithServices?.Services?.prompt ??
+      globalsWithServices.Services?.prompt
+    );
+  }
+}
 
 function getOptionalZoteroGlobal(): ZoteroGlobal | undefined {
   return (globalThis as typeof globalThis & { Zotero?: ZoteroGlobal }).Zotero;
@@ -683,3 +1241,31 @@ function getGlobalDocument(): Document {
   return getZoteroGlobal().getMainWindow().document;
 }
 
+function getContrastingTextColor(hexColor: string): "#202124" | "#FFFFFF" {
+  const red = Number.parseInt(hexColor.slice(1, 3), 16);
+  const green = Number.parseInt(hexColor.slice(3, 5), 16);
+  const blue = Number.parseInt(hexColor.slice(5, 7), 16);
+  const luminance = (red * 299 + green * 587 + blue * 114) / 1000;
+  return luminance > 165 ? "#202124" : "#FFFFFF";
+}
+
+function setCSSProperty(
+  element: HTMLElement,
+  property: string,
+  value: string,
+): void {
+  const style = (element as HTMLElement & { style?: CSSStyleDeclaration })
+    .style;
+  if (style?.setProperty) {
+    style.setProperty(property, value);
+    return;
+  }
+
+  element.setAttribute("style", `${property}: ${value};`);
+}
+
+function removeCSSProperty(element: HTMLElement, property: string): void {
+  const style = (element as HTMLElement & { style?: CSSStyleDeclaration })
+    .style;
+  style?.removeProperty?.(property);
+}

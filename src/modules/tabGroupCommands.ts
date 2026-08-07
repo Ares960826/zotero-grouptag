@@ -71,6 +71,19 @@ export class TabGroupCommandHandler {
     }
   }
 
+  toggleGroupCollapsed(groupId: string): TabGroup | undefined {
+    const group = this.model.getGroup(groupId);
+    if (!group) {
+      return undefined;
+    }
+
+    const updated = this.model.setGroupCollapsed(groupId, !group.collapsed);
+    if (updated) {
+      this.emitChange();
+    }
+    return updated;
+  }
+
   assignTab(groupId: string, tabId: string): boolean {
     const success = this.model.assignTab(groupId, tabId);
     if (success) {
@@ -79,12 +92,15 @@ export class TabGroupCommandHandler {
     return success;
   }
 
-  unassignTab(groupId: string, tabId: string): boolean {
+  unassignTab(
+    groupId: string,
+    tabId: string,
+    deleteEmptyGroup = false,
+  ): boolean {
     const success = this.model.unassignTab(groupId, tabId);
     if (success) {
-      // Auto-delete the group if it has no tabs left
       const group = this.model.groups.find((g) => g.id === groupId);
-      if (group && group.tabIds.length === 0) {
+      if (deleteEmptyGroup && group?.tabIds.length === 0) {
         this.model.deleteGroup(groupId);
       }
       this.emitChange();

@@ -3,18 +3,9 @@ import type {
   TabGroup,
   TabGroupModelSnapshot,
 } from "./tabGroupModel.ts";
+import { isTabGroupColor } from "./tabGroupModel.ts";
 
 import { logZoteroError, toContextualError } from "./zoteroLogging.ts";
-
-const SUPPORTED_TAB_GROUP_COLORS = [
-  "blue",
-  "green",
-  "yellow",
-  "orange",
-  "red",
-  "purple",
-  "gray",
-] as const;
 
 export const TAB_GROUP_STORE_VERSION = 1 as const;
 
@@ -30,6 +21,7 @@ interface PersistedTabGroup {
   readonly id: string;
   readonly name: string;
   readonly color: string;
+  readonly collapsed?: boolean;
   readonly tabIds: readonly string[];
 }
 
@@ -122,9 +114,17 @@ function parsePersistedGroups(value: unknown): TabGroup[] | undefined {
     const id = parseIdentifier(entry.id);
     const name = parseGroupName(entry.name);
     const color = parseColor(entry.color);
+    const collapsed = parseCollapsed(entry.collapsed);
     const tabIds = parseTabIds(entry.tabIds, assignedTabIds);
 
-    if (!id || !name || !color || !tabIds || groupIds.has(id)) {
+    if (
+      !id ||
+      !name ||
+      !color ||
+      collapsed === undefined ||
+      !tabIds ||
+      groupIds.has(id)
+    ) {
       return undefined;
     }
 
@@ -133,6 +133,7 @@ function parsePersistedGroups(value: unknown): TabGroup[] | undefined {
       id,
       name,
       color,
+      collapsed,
       tabIds,
     });
   }
@@ -185,6 +186,14 @@ function parseColor(value: unknown): TabGroup["color"] | undefined {
   return isTabGroupColor(value) ? value : undefined;
 }
 
+function parseCollapsed(value: unknown): boolean | undefined {
+  if (value === undefined) {
+    return false;
+  }
+
+  return typeof value === "boolean" ? value : undefined;
+}
+
 function parseGroupName(value: unknown): string | undefined {
   if (typeof value !== "string") {
     return undefined;
@@ -202,11 +211,4 @@ function parseIdentifier(value: unknown): string | undefined {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
-}
-
-function isTabGroupColor(value: unknown): value is TabGroup["color"] {
-  return (
-    typeof value === "string" &&
-    SUPPORTED_TAB_GROUP_COLORS.includes(value as never)
-  );
 }
