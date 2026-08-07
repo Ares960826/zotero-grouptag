@@ -66,7 +66,9 @@ An expanded group cannot be dragged as one unit. This keeps individual PDF
 tabs readable and avoids interfering with Zotero's native tab ordering.
 
 To move the whole group, collapse it first, then drag the collapsed colored
-group header to the desired position. Expand it again after moving if needed.
+group header. A drop marker shows the destination while the surrounding tabs
+stay still; the group moves as one unit when you release it. Expand it again
+after moving if needed.
 
 ### Assign more tabs to a group
 
