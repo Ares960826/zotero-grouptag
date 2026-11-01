@@ -1,6 +1,6 @@
 {
   "name": "zotero-grouptag",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "description": "A Zotero plugin for Chrome style visual grouping of PDF reader tabs",
   "type": "module",
   "config": {
@@ -30,6 +30,7 @@
     "lint:fix": "prettier --write . && eslint . --fix",
     "release": "zotero-plugin release",
     "test": "zotero-plugin test",
+    "test:smoke": "python3 smoke/run.py",
     "update-deps": "npm update --save"
   },
   "keywords": [

@@ -1,0 +1,13 @@
+{
+  "manifest_version": 2,
+  "name": "GT Harness",
+  "version": "1.0",
+  "applications": {
+    "zotero": {
+      "id": "gt-harness@test.local",
+      "update_url": "https://localhost/none.json",
+      "strict_min_version": "7.0",
+      "strict_max_version": "99.*"
+    }
+  }
+}

@@ -26,11 +26,12 @@ assignments from a right-click context menu.
 
 | Zotero | Support          |
 | ------ | ---------------- |
-| 10.0.x | ✅ Supported     |
-| 9.x    | ✅ Supported     |
-| 8.x    | ✅ Supported     |
-| 7.x    | ✅ Supported     |
+| ≥ 7    | ✅ Supported     |
 | < 7    | ❌ Not supported |
+
+GroupTag sets no upper Zotero version limit, so a Zotero update won't disable
+it. If something breaks on a new version, please
+[open an issue](https://github.com/Ares960826/zotero-grouptag/issues).
 
 macOS, Windows, and Linux are all supported.
 
