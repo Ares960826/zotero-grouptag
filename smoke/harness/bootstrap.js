@@ -452,6 +452,103 @@ async function main() {
       pm.calls.join("|"),
     );
   }
+  // Second group: last-tab prompt, recolor, delete.
+  const groupNamed = (name) => store().groups.find((g) => g.name === name);
+  const headerNamed = (name) =>
+    Array.from(d.querySelectorAll(".grouptag-header")).find((x) =>
+      x.textContent.includes(name),
+    );
+  const openHeaderMenu = async (header) => {
+    const box = header.getBoundingClientRect();
+    header.dispatchEvent(
+      new win.MouseEvent("contextmenu", {
+        bubbles: true,
+        cancelable: true,
+        button: 2,
+        clientX: box.left + 2,
+        clientY: box.top + 2,
+        screenX: win.screenX + box.left + 2,
+        screenY: win.screenY + box.top + 2,
+        view: win,
+      }),
+    );
+    return until(
+      () =>
+        d.getElementById("grouptag-header-delete")?.closest("menupopup")
+          ?.state === "open",
+      4000,
+    );
+  };
+  const headerCommand = async (name, id, promptValue, confirmValue) => {
+    const opened = await openHeaderMenu(headerNamed(name));
+    const item = d.getElementById(id);
+    const popup = item.closest("menupopup");
+    const stub = stubPrompt(win, promptValue, confirmValue);
+    item.doCommand();
+    popup.hidePopup();
+    await Zotero.Promise.delay(400);
+    stub.restore();
+    return { opened: !!opened, calls: stub.calls };
+  };
+  pm = stubPrompt(win, "Beta", true);
+  await clickMenu(win, C, "Assign to New Group");
+  pm.restore();
+  check("second group created", groupNamed("Beta")?.tabIds.length === 1);
+  await until(() => headerNamed("Beta"));
+
+  pm = stubPrompt(win, "", false);
+  await clickMenu(win, C, "Remove from Group");
+  pm.restore();
+  check(
+    "last tab: cancel keeps empty group",
+    pm.calls.length === 1 && groupNamed("Beta")?.tabIds.length === 0,
+    JSON.stringify(groupNamed("Beta")),
+  );
+  await clickMenu(win, C, "Assign to: Beta");
+  check("empty group can be reused", groupNamed("Beta")?.tabIds.length === 1);
+  await until(() => headerNamed("Beta"));
+
+  const colorBefore = groupNamed("Beta").color;
+  await headerCommand("Beta", "grouptag-header-recolor", "", false);
+  const swatch = await until(() =>
+    Array.from(d.querySelectorAll(".grouptag-color-swatch")).find(
+      (x) => x.getAttribute("data-color") !== colorBefore,
+    ),
+  );
+  check("color palette has choices", !!swatch);
+  const colorPicked = swatch?.getAttribute("data-color");
+  swatch?.click();
+  await Zotero.Promise.delay(400);
+  check(
+    "recolor persisted",
+    groupNamed("Beta")?.color === colorPicked,
+    `${colorBefore} -> ${groupNamed("Beta")?.color}`,
+  );
+
+  let result = await headerCommand("Beta", "grouptag-header-delete", "", false);
+  check(
+    "delete cancelled keeps group",
+    result.calls.length === 1 && !!groupNamed("Beta"),
+  );
+  result = await headerCommand("Beta", "grouptag-header-delete", "", true);
+  check(
+    "delete removes group",
+    result.calls.length === 1 && !groupNamed("Beta"),
+  );
+  await until(() => !headerNamed("Beta"));
+  check(
+    "deleted group leaves no decoration",
+    !headerNamed("Beta") && !tabEl(d, C).classList.contains("grouptag-tab"),
+  );
+
+  pm = stubPrompt(win, "Gamma", true);
+  await clickMenu(win, C, "Assign to New Group");
+  pm.restore();
+  pm = stubPrompt(win, "", true);
+  await clickMenu(win, C, "Remove from Group");
+  pm.restore();
+  check("last tab: confirm deletes group", !groupNamed("Gamma"));
+
   // hot reload: decorations go, come back from prefs
   await a.disable();
   await Zotero.Promise.delay(600);
