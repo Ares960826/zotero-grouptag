@@ -26,6 +26,7 @@ assignments from a right-click context menu.
 
 | Zotero | Support          |
 | ------ | ---------------- |
+| 10.0.x | ✅ Supported     |
 | 9.x    | ✅ Supported     |
 | 8.x    | ✅ Supported     |
 | 7.x    | ✅ Supported     |
