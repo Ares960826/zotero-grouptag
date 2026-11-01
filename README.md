@@ -26,8 +26,12 @@ assignments from a right-click context menu.
 
 | Zotero | Support          |
 | ------ | ---------------- |
-| ≥ 7    | ✅ Supported     |
+| ≥ 8    | ✅ Supported     |
+| 7.x    | ⚠️ Limited       |
 | < 7    | ❌ Not supported |
+
+On Zotero 7, the plugin loads but its tab menu is missing because that version
+has no `Zotero.MenuManager`, so you can't create or assign groups.
 
 GroupTag sets no upper Zotero version limit, so a Zotero update won't disable
 it. If something breaks on a new version, please
