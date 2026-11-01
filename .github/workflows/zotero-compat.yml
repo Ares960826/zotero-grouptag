@@ -1,0 +1,75 @@
+# Early warning only. GroupTag declares no upper Zotero version limit, so a
+# failure here opens an issue for a maintainer and does not affect users.
+name: Zotero compatibility
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/zotero-compat.yml"
+      - "smoke/**"
+      - "addon/**"
+      - "src/**"
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        channel: [release, beta]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build the plugin
+        run: |
+          npm install --no-audit --no-fund
+          npx zotero-plugin build
+      - name: Install Zotero runtime dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libgtk-3-0t64 libdbus-glib-1-2 libasound2t64 libx11-xcb1 libxtst6
+      - name: Download the latest Zotero
+        id: zotero
+        run: |
+          url=$(curl -sIL "https://www.zotero.org/download/client/dl?channel=${{ matrix.channel }}&platform=linux-x86_64" \
+            | tr -d '\r' | awk 'tolower($1)=="location:"{print $2}' | tail -1)
+          version=$(python3 -c 'import sys,urllib.parse as u; print(u.unquote(sys.argv[1].split("/")[-2]))' "$url")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Testing Zotero $version"
+          mkdir "$RUNNER_TEMP/zotero"
+          curl -sL "$url" | tar -xJ --strip-components=1 -C "$RUNNER_TEMP/zotero"
+      - name: Run the smoke test
+        env:
+          ZOTERO_PLUGIN_ZOTERO_BIN_PATH: ${{ runner.temp }}/zotero/zotero
+        run: xvfb-run -a -s "-screen 0 1280x800x24" python3 smoke/run.py
+      - name: Keep test output
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-${{ matrix.channel }}
+          path: |
+            .scaffold/smoke/*.json
+            .scaffold/smoke/*.png
+            .scaffold/smoke/*.log
+      - name: Open an issue
+        if: failure() && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.zotero.outputs.version }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="Smoke test failed on Zotero ${VERSION:-unknown}"
+          count=$(gh issue list --state open --search "\"$title\" in:title" --json number --jq length)
+          if [ "$count" = "0" ]; then
+            gh issue create --title "$title" --body "The scheduled smoke test failed on Zotero ${VERSION:-unknown}. Users are not blocked by this check. Check the run before assuming a real bug: $RUN_URL"
+          fi
