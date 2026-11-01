@@ -281,8 +281,9 @@ function normalizeGroupColor(color: string): TabGroupColor {
 export function isTabGroupColor(color: unknown): color is TabGroupColor {
   return (
     typeof color === "string" &&
-    ([...TAB_GROUP_COLORS, ...LEGACY_TAB_GROUP_COLORS] as readonly string[])
-      .includes(color)
+    (
+      [...TAB_GROUP_COLORS, ...LEGACY_TAB_GROUP_COLORS] as readonly string[]
+    ).includes(color)
   );
 }
 
