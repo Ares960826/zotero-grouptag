@@ -1,5 +1,7 @@
 # Zotero GroupTag
 
+[简体中文](README.zh-CN.md) | English
+
 Chrome-style visual tab grouping for the Zotero PDF reader.
 
 Adds colored group headers and underline indicators to the Zotero tab bar, lets
