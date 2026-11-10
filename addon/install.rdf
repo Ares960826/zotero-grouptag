@@ -5,8 +5,8 @@
   <Description about="urn:mozilla:install-manifest">
     <em:id>grouptag@zotero.org</em:id>
     <em:name>Zotero GroupTag</em:name>
-    <em:version>1.2.2</em:version>
-    <em:description>Chrome style visual grouping for opened Zotero PDF reader tabs</em:description>
+    <em:version>1.2.3</em:version>
+    <em:description>Chrome style visual grouping for opened Zotero reader tabs (PDF, EPUB, web snapshot)</em:description>
     <em:creator>zotero-grouptag contributors</em:creator>
     <em:license>AGPL-3.0-or-later</em:license>
 

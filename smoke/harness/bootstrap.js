@@ -549,6 +549,47 @@ async function main() {
   pm.restore();
   check("last tab: confirm deletes group", !groupNamed("Gamma"));
 
+  // Non-PDF readers (issue #12): web snapshot and EPUB tabs can be grouped.
+  for (const [file, contentType, kind] of [
+    ["D.html", "text/html", "snapshot"],
+    ["E.epub", "application/epub+zip", "epub"],
+  ]) {
+    const item = await Zotero.Attachments.importFromFile({
+      file: Zotero.File.pathToFile(OUT + "/pdf/" + file),
+      libraryID: Zotero.Libraries.userLibraryID,
+      contentType,
+    });
+    const reader = await Zotero.Reader.open(item.id);
+    const tabId = reader && reader.tabID;
+    await until(() => tabId && tabEl(d, tabId));
+    await Zotero.Promise.delay(600);
+    check(
+      `${kind}: opened in ${kind} reader`,
+      reader && reader.type === kind,
+      reader && reader.type,
+    );
+    const stableId = `library:${item.libraryID}:key:${item.key}`;
+    r = await clickMenu(win, tabId, "Assign to: Alpha");
+    check(
+      `${kind}: tab menu assigns to group`,
+      r.ok && groupNamed("Alpha")?.tabIds.includes(stableId),
+      JSON.stringify(r.labels),
+    );
+    await until(() => tabEl(d, tabId)?.classList.contains("grouptag-tab"));
+    check(
+      `${kind}: member tab decorated`,
+      tabEl(d, tabId)?.classList.contains("grouptag-tab"),
+    );
+    r = await clickMenu(win, tabId, "Remove from Group");
+    check(
+      `${kind}: remove from group`,
+      r.ok && !groupNamed("Alpha")?.tabIds.includes(stableId),
+      JSON.stringify(groupNamed("Alpha")?.tabIds),
+    );
+    Tabs.close(tabId);
+    await Zotero.Promise.delay(400);
+  }
+
   // hot reload: decorations go, come back from prefs
   await a.disable();
   await Zotero.Promise.delay(600);
@@ -606,9 +647,10 @@ async function main() {
   await Zotero.Promise.delay(300);
   R.info.finalStore = store();
   Zotero.Prefs.set("gtharness.phase2", true, true);
+  // Zotero saves the window's tabs when it quits; the restart phase restores them.
+  // Never pass null to Session.setLastClosedZoteroPaneState: from Zotero 11.0 beta 4
+  // a null window state in session.json stops the next startup (issue #14).
   await Zotero.Session?.save?.();
-  if (win.Zotero_Tabs && Zotero.Session)
-    Zotero.Session.setLastClosedZoteroPaneState?.(null);
   await shot(win, "final");
 }
 async function startup({ rootURI }) {
