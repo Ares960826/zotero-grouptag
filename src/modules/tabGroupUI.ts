@@ -87,8 +87,7 @@ export class TabGroupUI {
   private _contextMenu: NativeContextMenuPopup | undefined;
   private _colorPalette: NativeContextMenuPopup | undefined;
   private _pendingColorSelection:
-    | ((color: (typeof TAB_GROUP_COLORS)[number]) => void)
-    | undefined;
+    ((color: (typeof TAB_GROUP_COLORS)[number]) => void) | undefined;
   private _tabContainer: Element | undefined;
   private _dragInProgress = false;
   private _collapsedGroupDrag:
@@ -330,8 +329,7 @@ export class TabGroupUI {
     // sandbox's globalThis. Access it from the document's owning window.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const MObserver = (this._document.defaultView as any)?.MutationObserver as
-      | typeof MutationObserver
-      | undefined;
+      typeof MutationObserver | undefined;
     if (!MObserver) return;
 
     this._observer = new MObserver(() => {
@@ -748,8 +746,7 @@ export class TabGroupUI {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const win = this._document.defaultView as any;
     const menuManager = win?.Zotero?.MenuManager as
-      | NativeMenuManager
-      | undefined;
+      NativeMenuManager | undefined;
 
     if (!menuManager || !this._commands) {
       return;
@@ -854,33 +851,31 @@ export class TabGroupUI {
       // Each existing group gets its own top-level menuitem.
       // Zotero's MenuManager for "main/tab" does not support menuType "menu"
       // (nested submenus), so we flatten the "Assign to Group" list here.
-      ...this._model.groups.map(
-        (group): NativeMenuDefinition => ({
-          menuType: "menuitem",
-          onShowing: (_event, context): void => {
-            context.menuElem.setAttribute("label", "Assign to: " + group.name);
-            try {
-              const snapshot = this.getSnapshotForContext(context);
-              const currentGroup = snapshot
-                ? this.getGroupForTab(snapshot)
-                : undefined;
-              context.setVisible(!!snapshot && currentGroup?.id !== group.id);
-            } catch {
-              context.setVisible(true);
-            }
-          },
-          onCommand: (_event, context): void => {
-            try {
-              const snapshot = this.getSnapshotForContext(context);
-              if (!snapshot || !this._commands) return;
+      ...this._model.groups.map((group): NativeMenuDefinition => ({
+        menuType: "menuitem",
+        onShowing: (_event, context): void => {
+          context.menuElem.setAttribute("label", "Assign to: " + group.name);
+          try {
+            const snapshot = this.getSnapshotForContext(context);
+            const currentGroup = snapshot
+              ? this.getGroupForTab(snapshot)
+              : undefined;
+            context.setVisible(!!snapshot && currentGroup?.id !== group.id);
+          } catch {
+            context.setVisible(true);
+          }
+        },
+        onCommand: (_event, context): void => {
+          try {
+            const snapshot = this.getSnapshotForContext(context);
+            if (!snapshot || !this._commands) return;
 
-              this._commands.assignTab(group.id, snapshot.identity.stableId);
-            } catch {
-              // Silently fail
-            }
-          },
-        }),
-      ),
+            this._commands.assignTab(group.id, snapshot.identity.stableId);
+          } catch {
+            // Silently fail
+          }
+        },
+      })),
     ];
   }
 
@@ -1211,8 +1206,7 @@ export class TabGroupUI {
 
   private getPromptService(): GeckoPromptService | undefined {
     const windowWithServices = this._document.defaultView as
-      | (Window & { Services?: { prompt?: GeckoPromptService } })
-      | null;
+      (Window & { Services?: { prompt?: GeckoPromptService } }) | null;
     const globalsWithServices = globalThis as typeof globalThis & {
       Services?: { prompt?: GeckoPromptService };
     };
