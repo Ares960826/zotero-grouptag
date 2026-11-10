@@ -1,5 +1,5 @@
 {
-  "description": "Chrome style visual grouping for opened Zotero PDF reader tabs.",
+  "description": "Chrome style visual grouping for opened Zotero reader tabs (PDF, EPUB, web snapshot).",
   "applications": {
     "zotero": {
       "strict_min_version": "7.0.0",

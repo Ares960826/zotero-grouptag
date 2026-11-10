@@ -1,9 +1,10 @@
 # Zotero GroupTag
 
-Chrome-style visual tab grouping for the Zotero PDF reader.
+Chrome-style visual tab grouping for the Zotero reader: PDFs, EPUBs and web
+snapshots.
 
 Adds colored group headers and underline indicators to the Zotero tab bar, lets
-you create named groups, collapse them without closing PDFs, and manage tab
+you create named groups, collapse them without closing documents, and manage tab
 assignments from a right-click context menu.
 
 ![Zotero tab bar with GroupTag group headers](docs/screenshot.png)
@@ -13,12 +14,12 @@ assignments from a right-click context menu.
 - **Colored group headers** styled like Chrome tab groups
 - **Automatic initial colors** with a 33-color palette for later changes
 - **Per-tab underline indicators** matching the group color
-- **Collapsible groups** that hide grouped tabs without closing their PDFs
+- **Collapsible groups** that hide grouped tabs without closing their documents
 - **Stable group movement** with a clear drop marker while surrounding tabs stay still
 - **Contiguous groups** that stay together while preserving manual ordering inside each group
-- **Create groups** from any PDF tab via right-click → "Assign to New Group"
+- **Create groups** from any reader tab (PDF, EPUB or web snapshot) via right-click → "Assign to New Group"
 - **Rename, recolor, collapse, expand, and delete groups** via the group header
-- **Assign tabs** to existing groups via right-click on any PDF tab
+- **Assign tabs** to existing groups via right-click on any reader tab
 - **Empty-group choice** — when the last tab is removed, choose whether to delete or keep the group
 - **Persistent across sessions** — group assignments are saved in Zotero preferences
 

@@ -81,24 +81,18 @@ export function createZoteroTabAdapter(
     return runtime
       .getTabs()
       .filter((tab) => isReaderTabType(tab.type))
-      .flatMap((tab) => {
+      .map((tab) => {
+        // Every reader tab can be grouped: PDF, EPUB and web snapshot alike.
+        // Tabs without a reader instance yet ("reader-unloaded" after a
+        // restart) report "unloaded" until the user activates them.
         const reader = readersByTabId.get(tab.id);
-        // Drop tabs whose reader instance is present and explicitly non-pdf.
-        // Tabs without a reader instance (type "reader-unloaded" before the
-        // user activates them) are kept and assumed to be PDFs.
-        if (reader && getReaderType(reader) !== "pdf") {
-          return [];
-        }
-
-        return [
-          {
-            tabId: tab.id,
-            title: tab.title || reader?._title || tab.id,
-            selected: Boolean(tab.selected),
-            readerType: reader ? getReaderType(reader) : "pdf",
-            identity: buildIdentity(tab, reader, runtime.getItemMeta),
-          },
-        ];
+        return {
+          tabId: tab.id,
+          title: tab.title || reader?._title || tab.id,
+          selected: Boolean(tab.selected),
+          readerType: reader ? getReaderType(reader) : "unloaded",
+          identity: buildIdentity(tab, reader, runtime.getItemMeta),
+        };
       });
   };
 
@@ -124,7 +118,7 @@ export function createZoteroTabAdapter(
 }
 
 function isReaderTabType(type: string): boolean {
-  // Zotero uses "reader" for an active PDF reader tab and "reader-unloaded"
+  // Zotero uses "reader" for an active reader tab and "reader-unloaded"
   // for tabs whose reader has not been instantiated yet (the common case
   // after a restart for tabs the user has not clicked). Future variants
   // starting with "reader" should also be considered.

@@ -41,6 +41,43 @@ def make_pdf(text):
     return pdf + b"trailer<</Size 6/Root 1 0 R>>\nstartxref\n%d\n%%%%EOF\n" % xref
 
 
+def make_epub(path, text):
+    chapter = (
+        '<?xml version="1.0" encoding="utf-8"?>\n'
+        '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter</title></head>'
+        f"<body><p>Book {text}</p></body></html>"
+    )
+    nav = (
+        '<?xml version="1.0" encoding="utf-8"?>\n'
+        '<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">'
+        '<head><title>Nav</title></head><body><nav epub:type="toc"><ol>'
+        '<li><a href="chapter.xhtml">Chapter</a></li></ol></nav></body></html>'
+    )
+    opf = (
+        '<?xml version="1.0" encoding="utf-8"?>\n'
+        '<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id">'
+        '<metadata xmlns:dc="http://purl.org/dc/elements/1.1/">'
+        f'<dc:identifier id="id">urn:uuid:grouptag-smoke-{text}</dc:identifier>'
+        f"<dc:title>Book {text}</dc:title><dc:language>en</dc:language>"
+        '<meta property="dcterms:modified">2026-01-01T00:00:00Z</meta></metadata>'
+        '<manifest><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>'
+        '<item id="ch" href="chapter.xhtml" media-type="application/xhtml+xml"/></manifest>'
+        '<spine><itemref idref="ch"/></spine></package>'
+    )
+    container = (
+        '<?xml version="1.0"?>\n'
+        '<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">'
+        '<rootfiles><rootfile full-path="OEBPS/content.opf" '
+        'media-type="application/oebps-package+xml"/></rootfiles></container>'
+    )
+    with zipfile.ZipFile(path, "w") as z:
+        z.writestr("mimetype", "application/epub+zip", compress_type=zipfile.ZIP_STORED)
+        z.writestr("META-INF/container.xml", container, compress_type=zipfile.ZIP_DEFLATED)
+        z.writestr("OEBPS/content.opf", opf, compress_type=zipfile.ZIP_DEFLATED)
+        z.writestr("OEBPS/nav.xhtml", nav, compress_type=zipfile.ZIP_DEFLATED)
+        z.writestr("OEBPS/chapter.xhtml", chapter, compress_type=zipfile.ZIP_DEFLATED)
+
+
 def prepare(xpi):
     shutil.rmtree(OUT, ignore_errors=True)
     profile = OUT / "profile"
@@ -49,6 +86,12 @@ def prepare(xpi):
     (OUT / "pdf").mkdir()
     for name in "ABC":
         (OUT / "pdf" / f"{name}.pdf").write_bytes(make_pdf(name))
+    # Non-PDF readers: a saved web page snapshot and an EPUB.
+    (OUT / "pdf" / "D.html").write_text(
+        "<!doctype html><html><head><meta charset=utf-8><title>Snapshot D</title>"
+        "</head><body><p>Web snapshot D</p></body></html>"
+    )
+    make_epub(OUT / "pdf" / "E.epub", "E")
     shutil.copy(xpi, profile / "extensions/grouptag@zotero.org.xpi")
     with zipfile.ZipFile(profile / "extensions/gt-harness@test.local.xpi", "w") as z:
         for name in ("manifest.json", "bootstrap.js"):

@@ -1,7 +1,7 @@
 {
   "name": "zotero-grouptag",
-  "version": "1.2.2",
-  "description": "A Zotero plugin for Chrome style visual grouping of PDF reader tabs",
+  "version": "1.2.3",
+  "description": "A Zotero plugin for Chrome style visual grouping of reader tabs",
   "type": "module",
   "config": {
     "addonName": "Zotero GroupTag",
