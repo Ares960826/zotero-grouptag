@@ -1,5 +1,7 @@
 # Zotero GroupTag
 
+[![Zotero Plugins grade](https://zoteroplugins.org/badge/zotero-grouptag.svg)](https://zoteroplugins.org/p/zotero-grouptag)
+
 Chrome-style visual tab grouping for the Zotero reader: PDFs, EPUBs and web
 snapshots.
 
