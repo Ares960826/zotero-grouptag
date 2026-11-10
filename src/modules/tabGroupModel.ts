@@ -50,8 +50,7 @@ export type TabGroupId = string;
 export type TabGroupName = string;
 export type TabId = string;
 export type TabGroupColor =
-  | (typeof TAB_GROUP_COLORS)[number]
-  | (typeof LEGACY_TAB_GROUP_COLORS)[number];
+  (typeof TAB_GROUP_COLORS)[number] | (typeof LEGACY_TAB_GROUP_COLORS)[number];
 export type ActiveTabGroupId = TabGroupId | undefined;
 
 export interface TabGroup {
